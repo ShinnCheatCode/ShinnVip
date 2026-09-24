@@ -1,0 +1,84 @@
+name: Build Shinn
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+
+      - name: Find project
+        id: proj
+        run: |
+          set -euo pipefail
+          PROJECT=$(find . -name "*.xcodeproj" -not -path "./.git/*" | head -n 1)
+          WORKSPACE=$(find . -name "*.xcworkspace" -not -path "./.git/*" -not -path "*.xcodeproj/*" | head -n 1)
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+          echo "workspace=$WORKSPACE" >> "$GITHUB_OUTPUT"
+          if [ -z "$PROJECT" ] && [ -z "$WORKSPACE" ]; then
+            echo "::error::Thiếu .xcodeproj — đẩy cả project Xcode"
+            exit 1
+          fi
+
+      - name: Resolve scheme
+        id: scheme
+        run: |
+          set -euo pipefail
+          if [ -n "${{ steps.proj.outputs.workspace }}" ]; then
+            LIST=$(xcodebuild -list -workspace "${{ steps.proj.outputs.workspace }}")
+          else
+            LIST=$(xcodebuild -list -project "${{ steps.proj.outputs.project }}")
+          fi
+          SCHEME=$(echo "$LIST" | awk '/Schemes:/{f=1;next} f&&NF{print $1; exit}')
+          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          mkdir -p derived
+          COMMON=(
+            -scheme "${{ steps.scheme.outputs.scheme }}"
+            -configuration Release
+            -destination "generic/platform=iOS"
+            -derivedDataPath derived
+            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_REQUIRED=NO
+            CODE_SIGN_IDENTITY=""
+            DEVELOPMENT_TEAM=""
+          )
+          if [ -n "${{ steps.proj.outputs.workspace }}" ]; then
+            xcodebuild -workspace "${{ steps.proj.outputs.workspace }}" "${COMMON[@]}" build
+          else
+            xcodebuild -project "${{ steps.proj.outputs.project }}" "${COMMON[@]}" build
+          fi
+
+      - name: Package shinn.zip
+        run: |
+          set -euo pipefail
+          APP=$(find derived -name "*.app" -path "*/Build/Products/Release-iphoneos/*" | head -n 1)
+          [ -n "$APP" ] || APP=$(find derived -name "*.app" | head -n 1)
+          [ -n "$APP" ] || { echo "Không thấy .app"; exit 1; }
+          mkdir -p Payload dist
+          cp -R "$APP" Payload/
+          zip -r dist/Shinn.ipa Payload
+          cp dist/Shinn.ipa dist/shinn.zip
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: shinn
+          path: |
+            dist/shinn.zip
+            dist/Shinn.ipa
