@@ -1,455 +1,2561 @@
-name: Build IPA from Source.zip
+import SwiftUI
+import UIKit
+import LocalAuthentication
+import CryptoKit
+import Security
+import UniformTypeIdentifiers
 
-on:
-  workflow_dispatch:
-
-jobs:
-  build:
-    name: Build iOS IPA
-    runs-on: macos-15
-
-    steps:
-      # ============================================================
-      # 1. CHECKOUT REPOSITORY
-      # ============================================================
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # ============================================================
-      # 2. KIỂM TRA Source.zip
-      # ============================================================
-      - name: Check Source.zip
-        shell: bash
-        run: |
-          set -e
-
-          echo "========================================"
-          echo "        CHECK Source.zip"
-          echo "========================================"
-
-          if [ ! -f "Source.zip" ]; then
-            echo "❌ Không tìm thấy Source.zip"
-            echo ""
-            echo "Các file hiện có:"
-            find . -maxdepth 3 -type f -print
-            exit 1
-          fi
-
-          echo "✅ Tìm thấy Source.zip"
-          ls -lh "Source.zip"
-
-      # ============================================================
-      # 3. GIẢI NÉN SOURCE
-      # ============================================================
-      - name: Extract Source.zip
-        shell: bash
-        run: |
-          set -e
-
-          echo "========================================"
-          echo "        EXTRACT SOURCE"
-          echo "========================================"
-
-          rm -rf source
-          mkdir -p source
-
-          unzip -q "Source.zip" -d source
-
-          echo ""
-          echo "✅ Giải nén thành công"
-          echo ""
-
-          echo "Danh sách file:"
-          find source -maxdepth 5 -type f | head -300
-
-      # ============================================================
-      # 4. TÌM XCODE PROJECT / WORKSPACE
-      # ============================================================
-      - name: Find Xcode project
-        id: xcode
-        shell: bash
-        run: |
-          set -e
-
-          echo "========================================"
-          echo "        FIND XCODE PROJECT"
-          echo "========================================"
-
-          WORKSPACE=$(find source \
-            -type d \
-            -name "*.xcworkspace" \
-            -not -path "*/Pods/*" \
-            -print -quit)
-
-          PROJECT=$(find source \
-            -type d \
-            -name "*.xcodeproj" \
-            -not -path "*/Pods/*" \
-            -print -quit)
-
-          if [ -n "$WORKSPACE" ]; then
-            echo "workspace=$WORKSPACE" >> "$GITHUB_OUTPUT"
-            echo "project=" >> "$GITHUB_OUTPUT"
-
-            echo "✅ Tìm thấy Workspace:"
-            echo "$WORKSPACE"
-
-          elif [ -n "$PROJECT" ]; then
-            echo "workspace=" >> "$GITHUB_OUTPUT"
-            echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
-
-            echo "✅ Tìm thấy Project:"
-            echo "$PROJECT"
-
-          else
-            echo "❌ Không tìm thấy .xcodeproj hoặc .xcworkspace"
-            echo ""
-            echo "Cấu trúc source:"
-            find source -maxdepth 8 -print
-
-            exit 1
-          fi
-
-      # ============================================================
-      # 5. THÔNG TIN XCODE
-      # ============================================================
-      - name: Xcode information
-        run: |
-          echo "========================================"
-          echo "        XCODE INFORMATION"
-          echo "========================================"
-
-          xcodebuild -version
-
-          echo ""
-          echo "Xcode path:"
-          xcode-select -p
-
-      # ============================================================
-      # 6. LIỆT KÊ SCHEME
-      # ============================================================
-      - name: List schemes
-        shell: bash
-        run: |
-          set +e
-
-          echo "========================================"
-          echo "        AVAILABLE SCHEMES"
-          echo "========================================"
-
-          if [ -n "${{ steps.xcode.outputs.workspace }}" ]; then
-
-            xcodebuild \
-              -workspace "${{ steps.xcode.outputs.workspace }}" \
-              -list
-
-          else
-
-            xcodebuild \
-              -project "${{ steps.xcode.outputs.project }}" \
-              -list
-
-          fi
-
-      # ============================================================
-      # 7. TỰ ĐỘNG CHỌN SCHEME
-      # ============================================================
-      - name: Detect scheme
-        id: scheme
-        shell: bash
-        run: |
-          set -e
-
-          echo "========================================"
-          echo "        DETECT SCHEME"
-          echo "========================================"
-
-          if [ -n "${{ steps.xcode.outputs.workspace }}" ]; then
-
-            SCHEME=$(
-              xcodebuild \
-                -workspace "${{ steps.xcode.outputs.workspace }}" \
-                -list 2>/dev/null |
-              awk '
-                /Schemes:/ {
-                  found=1
-                  next
-                }
-
-                found && NF {
-                  gsub(/^[ \t]+|[ \t]+$/, "")
-                  print
-                  exit
-                }
-              '
+struct GlassCardModifier: ViewModifier {
+    var radius: CGFloat = 22
+    func body(content: Content) -> some View {
+        content
+            .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.15), lineWidth: 1)
             )
+    }
+}
 
-          else
+extension View {
+    func shinnGlass(radius: CGFloat = 22) -> some View {
+        modifier(GlassCardModifier(radius: radius))
+    }
+}
 
-            SCHEME=$(
-              xcodebuild \
-                -project "${{ steps.xcode.outputs.project }}" \
-                -list 2>/dev/null |
-              awk '
-                /Schemes:/ {
-                  found=1
-                  next
-                }
+struct BackgroundView: View {
+    var body: some View {
+        ZStack {
+            Color(.systemBackground)
+            RadialGradient(colors: [Color.primary.opacity(0.09), .clear], center: .topTrailing, startRadius: 20, endRadius: 500)
+            RadialGradient(colors: [Color.primary.opacity(0.05), .clear], center: .bottomLeading, startRadius: 20, endRadius: 450)
+        }
+        .ignoresSafeArea()
+    }
+}
 
-                found && NF {
-                  gsub(/^[ \t]+|[ \t]+$/, "")
-                  print
-                  exit
-                }
-              '
+struct ScreenPrivacyGuard: View {
+    @State private var captured = UIScreen.main.isCaptured
+    var body: some View {
+        Color.black
+            .opacity(captured ? 1 : 0)
+            .ignoresSafeArea()
+            .allowsHitTesting(captured)
+            .onReceive(NotificationCenter.default.publisher(for: UIScreen.capturedDidChangeNotification)) { _ in
+                captured = UIScreen.main.isCaptured
+            }
+    }
+}
+
+struct IconBox: View {
+    let systemName: String
+    var size: CGFloat = 56
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.system(size: size * 0.42, weight: .semibold))
+            .frame(width: size, height: size)
+            .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: size * 0.3, style: .continuous))
+    }
+}
+
+struct Pill: View {
+    let text: String
+    var body: some View {
+        Text(text)
+            .font(.caption.bold())
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Color.primary.opacity(0.1), in: Capsule())
+    }
+}
+
+enum ShinnLanguage: String, CaseIterable, Identifiable {
+    case vi
+    case en
+    var id: String { rawValue }
+    var title: String { self == .vi ? "Tiáº¿ng Viá»t" : "English" }
+}
+
+enum ShinnTheme: String, CaseIterable, Identifiable {
+    case system, light, dark
+    var id: String { rawValue }
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+    var titleKey: K {
+        switch self {
+        case .system: return .themeSystem
+        case .light: return .themeLight
+        case .dark: return .themeDark
+        }
+    }
+}
+
+final class AppSettings: ObservableObject {
+    @Published var theme: ShinnTheme {
+        didSet { UserDefaults.standard.set(theme.rawValue, forKey: "theme") }
+    }
+    @Published var language: ShinnLanguage {
+        didSet { UserDefaults.standard.set(language.rawValue, forKey: "language") }
+    }
+    @Published var autoRefresh: Bool {
+        didSet { UserDefaults.standard.set(autoRefresh, forKey: "autoRefresh") }
+    }
+    init() {
+        let defaults = UserDefaults.standard
+        theme = ShinnTheme(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
+        if let raw = defaults.string(forKey: "language"), let language = ShinnLanguage(rawValue: raw) {
+            self.language = language
+        } else {
+            self.language = .en
+        }
+        autoRefresh = defaults.object(forKey: "autoRefresh") as? Bool ?? true
+    }
+    func t(_ key: K) -> String { key.text.en }
+    func countText(_ n: Int) -> String { n == 1 ? "1 package" : "\(n) packages" }
+}
+
+enum K {
+    case heroFree, heroNote, categoriesTitle, allPackages, loadingText, loadFailed, retry
+    case settingsTitle, settingsSub, aboutTitle, aboutSub
+    case packagesTitle, packageCenter, packageCenterSub, searchPrompt, allLabel, notFound, notFoundDesc
+    case versionLabel, authorLabel, categoryLabel, sizeLabel, descriptionLabel
+    case downloadAction, downloading, downloaded, redownload, shareAction, savedHint, sha256OK
+    case errHash, errHTTP, errURL
+    case appearance, themeLabel, themeSystem, themeLight, themeDark, languageLabel
+    case autoUpdate, repoSection, defaultSource, defaultBadge, repoLocked, refreshRepo, infoTitle
+    case aboutDesc, madeBy, contactTitle, donateTitle, copy, copied
+    case featRemote, featSHA
+    case termsTitle, termsBody
+    case supportTitle, telegramSub, reportTitle, reportSub
+}
+
+extension K {
+    var text: (vi: String, en: String) {
+        switch self {
+        case .heroFree: return ("LÃ APP VÃ REPO HOÃN TOÃN FREE", "A COMPLETELY FREE APP AND REPO")
+        case .heroNote: return ("KhÃ´ng bÃ¡n key â¢ KhÃ´ng khÃ³a thiáº¿t bá»", "No keys sold â¢ No device lock")
+        case .categoriesTitle: return ("DANH Má»¤C GÃI", "PACKAGE CATEGORIES")
+        case .allPackages: return ("Táº¥t cáº£ gÃ³i", "All packages")
+        case .loadingText: return ("Äang táº£i repoâ¦", "Loading repoâ¦")
+        case .loadFailed: return ("KhÃ´ng táº£i ÄÆ°á»£c repo.", "Couldn't load the repo.")
+        case .retry: return ("Thá»­ láº¡i", "Retry")
+        case .settingsTitle: return ("CÃ i Äáº·t", "Settings")
+        case .settingsSub: return ("TÃ¹y chá»nh app", "Customize the app")
+        case .aboutTitle: return ("Giá»i Thiá»u", "About")
+        case .aboutSub: return ("ThÃ´ng tin app", "App information")
+        case .packagesTitle: return ("Packages", "Packages")
+        case .packageCenter: return ("Package Center", "Package Center")
+        case .packageCenterSub: return ("CÃ¡c package ÄÆ°á»£c cung cáº¥p bá»i Shinn Cheat", "Packages provided by Shinn Cheat")
+        case .searchPrompt: return ("TÃ¬m package", "Search packages")
+        case .allLabel: return ("Táº¥t cáº£", "All")
+        case .notFound: return ("KhÃ´ng tÃ¬m tháº¥y", "No results")
+        case .notFoundDesc: return ("KhÃ´ng cÃ³ package phÃ¹ há»£p.", "No packages match your search.")
+        case .versionLabel: return ("PhiÃªn báº£n", "Version")
+        case .authorLabel: return ("TÃ¡c giáº£", "Author")
+        case .categoryLabel: return ("Danh má»¥c", "Category")
+        case .sizeLabel: return ("Dung lÆ°á»£ng", "Size")
+        case .descriptionLabel: return ("MÃ´ táº£", "Description")
+        case .downloadAction: return ("Táº£i xuá»ng", "Download")
+        case .downloading: return ("Äang táº£iâ¦", "Downloadingâ¦")
+        case .downloaded: return ("ÄÃ£ táº£i xong", "Downloaded")
+        case .redownload: return ("Táº£i láº¡i", "Download again")
+        case .shareAction: return ("Chia sáº»", "Share")
+        case .savedHint: return ("File ÄÆ°á»£c lÆ°u trong Tá»p âº TrÃªn iPhone âº Shinn Cheat.", "Saved in Files âº On My iPhone âº Shinn Cheat.")
+        case .sha256OK: return ("ÄÃ£ xÃ¡c minh SHA256", "SHA256 verified")
+        case .errHash: return ("File táº£i vá» khÃ´ng khá»p SHA256.", "The downloaded file failed the SHA256 check.")
+        case .errHTTP: return ("Lá»i mÃ¡y chá»§", "Server error")
+        case .errURL: return ("Link táº£i khÃ´ng há»£p lá»", "Invalid download link")
+        case .appearance: return ("Giao diá»n", "Appearance")
+        case .themeLabel: return ("Chá»§ Äá»", "Theme")
+        case .themeSystem: return ("Theo há» thá»ng", "System")
+        case .themeLight: return ("SÃ¡ng", "Light")
+        case .themeDark: return ("Tá»i", "Dark")
+        case .languageLabel: return ("NgÃ´n ngá»¯", "Language")
+        case .autoUpdate: return ("Tá»± Äá»ng cáº­p nháº­t repo", "Auto-refresh repo")
+        case .repoSection: return ("Nguá»n repo", "Repository")
+        case .defaultSource: return ("Nguá»n máº·c Äá»nh", "Default source")
+        case .defaultBadge: return ("Máº¶C Äá»NH", "DEFAULT")
+        case .repoLocked: return ("Nguá»n máº·c Äá»nh cá»§a app.", "The app's built-in source.")
+        case .refreshRepo: return ("LÃ m má»i repo", "Refresh repo")
+        case .infoTitle: return ("ThÃ´ng tin", "Info")
+        case .aboutDesc: return ("Shinn Cheat is an app for managing packages through Shinn's repository.", "Shinn Cheat is an app for managing packages through Shinn's repository.")
+        case .madeBy: return ("App made by Shinn", "App made by Shinn")
+        case .contactTitle: return ("Contact", "Contact")
+        case .donateTitle: return ("Donate", "Donate")
+        case .copy: return ("Copy", "Copy")
+        case .copied: return ("Copied", "Copied")
+        case .featRemote: return ("Sync data from the repository", "Sync data from the repository")
+        case .featSHA: return ("Verify file integrity", "Verify file integrity")
+        case .termsTitle: return ("Terms of use", "Terms of use")
+        case .termsBody:
+            return (
+                "By installing and using this app, you agree to our policy.\n\nâ¢ The app and its repo are completely FREE.\nâ¢ Do not use the app for anything that violates the law.\nâ¢ Sabotage or deliberate violations will result in a warning.",
+                "By installing and using this app, you agree to our policy.\n\nâ¢ The app and its repo are completely FREE.\nâ¢ Do not use the app for anything that violates the law.\nâ¢ Sabotage or deliberate violations will result in a warning."
             )
+        case .supportTitle: return ("Support", "Support")
+        case .telegramSub: return ("Contact the support team", "Contact the support team")
+        case .reportTitle: return ("Report a bug", "Report a bug")
+        case .reportSub: return ("Report a bug or issue", "Report a bug or issue")
+        }
+    }
+}
 
-          fi
+extension AppInfo {
+    static let telegramHandle = "@ShinnThieuu"
+    static let telegramURL = URL(string: "https://t.me/ShinnThieuu")!
+    static let bankName = "MB Bank"
+    static let bankAccount = "104877777"
+    static let defaultRepoName = "Shinn Cheat Share"
+    static let defaultRepoURL = URL(string: "https://raw.githubusercontent.com/ShinnCheatCode/Mhieuu/main/shinn.json")!
+    static var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.1"
+    }
+}
 
-          if [ -z "$SCHEME" ]; then
-            echo "❌ Không tìm thấy Scheme."
-            exit 1
-          fi
+struct RepoManifest: Codable {
+    let name: String?
+    let description: String?
+    let icon: String?
+    let packages: [RepoPackage]
+}
 
-          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
+struct RepoPackage: Codable, Identifiable, Hashable {
+    let identifier: String
+    let name: String
+    let author: String?
+    let version: String?
+    let summary: String?
+    let description: String?
+    let category: String?
+    let tags: [String]?
+    let download: String
+    let sha256: String?
+    let size: Int?
+    let icon: String?
+    let patchPath: String?
+    let openURL: String?
+    var id: String { identifier }
+}
 
-          echo ""
-          echo "✅ Scheme được chọn:"
-          echo "$SCHEME"
+struct CategoryInfo: Identifiable {
+    let name: String
+    let count: Int
+    var id: String { name }
+}
 
-      # ============================================================
-      # 8. CLEAN BUILD
-      # ============================================================
-      - name: Clean build
-        shell: bash
-        run: |
-          set -e
+enum Route: Hashable {
+    case packages(String?)
+    case detail(String)
+    case settings
+    case about
+    case support
+    case repositoryManager
+    case patchBuilder
+}
 
-          echo "========================================"
-          echo "        CLEAN BUILD"
-          echo "========================================"
+func formatBytes(_ value: Int) -> String {
+    ByteCountFormatter.string(fromByteCount: Int64(value), countStyle: .file)
+}
 
-          rm -rf build
-          mkdir -p build
+enum DLError: Error {
+    case badURL, http(Int), hashMismatch, other(String)
+}
 
-      # ============================================================
-      # 9. BUILD ARCHIVE
-      # ============================================================
-      - name: Build archive
-        shell: bash
-        run: |
-          set -o pipefail
+enum PatchError: Error {
+    case invalidPath, sourceNotFound, backupFailed, applyFailed, restoreFailed, other(String)
+}
 
-          echo "========================================"
-          echo "        BUILD ARCHIVE"
-          echo "========================================"
+enum DownloadState { case idle, downloading, done(URL), failed(DLError) }
+enum LoadState { case idle, loading, loaded, failed }
+enum PatchState { case idle, applying, applied, restoring, restored, failed(String) }
 
-          SCHEME="${{ steps.scheme.outputs.scheme }}"
+func sha256Hex(of url: URL) throws -> String {
+    let data = try Data(contentsOf: url, options: .mappedIfSafe)
+    return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+}
 
-          if [ -n "${{ steps.xcode.outputs.workspace }}" ]; then
+@MainActor
+final class RepoStore: ObservableObject {
+    static func activeRepoURL() -> URL {
+        if UserDefaults.standard.bool(forKey: "shinn.license.repoLocked") {
+            return AppInfo.defaultRepoURL
+        }
+        let raw = UserDefaults.standard.string(forKey: "shinn.license.repo") ?? ""
+        if let url = URL(string: raw), url.scheme != nil { return url }
+        return AppInfo.defaultRepoURL
+    }
 
-            xcodebuild \
-              -workspace "${{ steps.xcode.outputs.workspace }}" \
-              -scheme "$SCHEME" \
-              -configuration Release \
-              -sdk iphoneos \
-              -destination "generic/platform=iOS" \
-              -archivePath "$PWD/build/App.xcarchive" \
-              CODE_SIGNING_ALLOWED=NO \
-              CODE_SIGNING_REQUIRED=NO \
-              CODE_SIGN_IDENTITY="" \
-              archive \
-              | tee build.log
+    @Published private(set) var manifest: RepoManifest?
+    @Published private(set) var loadState: LoadState = .idle
+    @Published private(set) var downloads: [String: DownloadState] = [:]
+    @Published private(set) var patchStates: [String: PatchState] = [:]
+    private var didBootstrap = false
 
-          else
+    private var documentsURL: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    }
+    private var cacheURL: URL {
+        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        return dir.appendingPathComponent("repo_default.json")
+    }
+    private var backupDirectory: URL {
+        documentsURL.appendingPathComponent(".ShinnBackups", isDirectory: true)
+    }
 
-            xcodebuild \
-              -project "${{ steps.xcode.outputs.project }}" \
-              -scheme "$SCHEME" \
-              -configuration Release \
-              -sdk iphoneos \
-              -destination "generic/platform=iOS" \
-              -archivePath "$PWD/build/App.xcarchive" \
-              CODE_SIGNING_ALLOWED=NO \
-              CODE_SIGNING_REQUIRED=NO \
-              CODE_SIGN_IDENTITY="" \
-              archive \
-              | tee build.log
+    var packages: [RepoPackage] { manifest?.packages ?? [] }
 
-          fi
+    var categories: [CategoryInfo] {
+        var order: [String] = []
+        var counts: [String: Int] = [:]
+        for p in packages {
+            let category = p.category ?? "Other"
+            if counts[category] == nil { order.append(category) }
+            counts[category, default: 0] += 1
+        }
+        return order.map { CategoryInfo(name: $0, count: counts[$0] ?? 0) }
+    }
 
-      # ============================================================
-      # 10. KIỂM TRA ARCHIVE
-      # ============================================================
-      - name: Check archive
-        shell: bash
-        run: |
-          set -e
+    func bootstrap(autoRefresh: Bool) async {
+        if didBootstrap { return }
+        didBootstrap = true
+        loadCache()
+        if manifest == nil || autoRefresh { await refresh() }
+    }
 
-          echo "========================================"
-          echo "        CHECK ARCHIVE"
-          echo "========================================"
+    private func loadCache() {
+        guard let data = try? Data(contentsOf: cacheURL),
+              let decoded = try? JSONDecoder().decode(RepoManifest.self, from: data) else { return }
+        manifest = decoded
+        loadState = .loaded
+    }
 
-          if [ ! -d "build/App.xcarchive" ]; then
-            echo "❌ Archive không được tạo."
+    func refresh() async {
+        if UserDefaults.standard.bool(forKey: "shinn.license.repoLocked") {
+            manifest = nil
+            loadState = .failed
+            return
+        }
+        loadState = .loading
+        do {
+            var request = URLRequest(url: RepoStore.activeRepoURL(), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
+            request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                throw DLError.http(http.statusCode)
+            }
+            let decoded = try JSONDecoder().decode(RepoManifest.self, from: data)
+            manifest = decoded
+            try? data.write(to: cacheURL, options: .atomic)
+            loadState = .loaded
+        } catch {
+            if manifest == nil { loadState = .failed } else { loadState = .loaded }
+        }
+    }
 
-            echo ""
-            echo "===== BUILD LOG ====="
-            cat build.log || true
+    private func destination(for pkg: RepoPackage) -> URL? {
+        guard let url = URL(string: pkg.download) else { return nil }
+        return documentsURL.appendingPathComponent(url.lastPathComponent)
+    }
 
-            exit 1
-          fi
+    func existingFile(for pkg: RepoPackage) -> URL? {
+        guard let destination = destination(for: pkg) else { return nil }
+        return FileManager.default.fileExists(atPath: destination.path) ? destination : nil
+    }
 
-          echo "✅ Archive đã được tạo."
+    func state(for pkg: RepoPackage) -> DownloadState {
+        if let state = downloads[pkg.id] { return state }
+        if let file = existingFile(for: pkg) { return .done(file) }
+        return .idle
+    }
 
-          echo ""
-          echo "Applications:"
-          find build/App.xcarchive/Products \
-            -maxdepth 3 \
-            -type d \
-            -name "*.app" \
-            -print
+    func download(_ pkg: RepoPackage) async {
+        guard let url = URL(string: pkg.download), let destination = destination(for: pkg) else {
+            downloads[pkg.id] = .failed(.badURL)
+            return
+        }
+        downloads[pkg.id] = .downloading
+        do {
+            let (temporaryURL, response) = try await URLSession.shared.download(from: url)
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                throw DLError.http(http.statusCode)
+            }
+            if let expected = pkg.sha256?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !expected.isEmpty {
+                let actual = try await Task.detached(priority: .utility) { try sha256Hex(of: temporaryURL) }.value
+                if actual.lowercased() != expected {
+                    try? FileManager.default.removeItem(at: temporaryURL)
+                    throw DLError.hashMismatch
+                }
+            }
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            try FileManager.default.moveItem(at: temporaryURL, to: destination)
+            downloads[pkg.id] = .done(destination)
+        } catch let error as DLError {
+            downloads[pkg.id] = .failed(error)
+        } catch {
+            downloads[pkg.id] = .failed(.other(error.localizedDescription))
+        }
+    }
 
-      # ============================================================
-      # 11. TÌM APP
-      # ============================================================
-      - name: Find built app
-        id: app
-        shell: bash
-        run: |
-          set -e
+    private func decodedPatchProject(for pkg: RepoPackage) throws -> PatchProject {
+        guard let archive = existingFile(for: pkg) else { throw PatchError.sourceNotFound }
+        let data = try Data(contentsOf: archive, options: .mappedIfSafe)
+        let summary = try PatchPackageCodec.inspect(data)
+        guard !summary.isPasswordProtected else {
+            throw PatchError.other("GÃ³i .3105 nÃ y ÄÆ°á»£c báº£o vá» báº±ng máº­t kháº©u.")
+        }
+        return try PatchPackageCodec.decode(data, password: nil).project
+    }
 
-          echo "========================================"
-          echo "        FIND APP"
-          echo "========================================"
+    func apply(_ pkg: RepoPackage) async {
+        patchStates[pkg.id] = .applying
+        do {
+            let project = try decodedPatchProject(for: pkg)
+            _ = try DevicePatchService.apply(project: project)
+            patchStates[pkg.id] = .applied
+            openTargetApp(for: pkg)
+        } catch {
+            patchStates[pkg.id] = .failed(error.localizedDescription)
+        }
+    }
 
-          APP=$(find \
-            build/App.xcarchive/Products/Applications \
-            -maxdepth 1 \
-            -type d \
-            -name "*.app" \
-            -print -quit)
+    func restore(_ pkg: RepoPackage) async {
+        patchStates[pkg.id] = .restoring
+        do {
+            let project = try decodedPatchProject(for: pkg)
+            guard let receipt = DevicePatchService.latestReceipt(projectID: project.id) else {
+                throw PatchError.restoreFailed
+            }
+            try DevicePatchService.restore(receipt: receipt)
+            patchStates[pkg.id] = .restored
+        } catch {
+            patchStates[pkg.id] = .failed(error.localizedDescription)
+        }
+    }
 
-          if [ -z "$APP" ]; then
-            echo "❌ Không tìm thấy .app"
+    func patchState(for pkg: RepoPackage) -> PatchState {
+        patchStates[pkg.id] ?? .idle
+    }
 
-            find build/App.xcarchive \
-              -maxdepth 6 \
-              -print
+    func openTargetApp(for pkg: RepoPackage) {
+        var schemes: [String] = []
+        if let raw = pkg.openURL, !raw.isEmpty { schemes.append(raw) }
+        switch (pkg.category ?? "").lowercased() {
+        case "free fire": schemes += ["freefire://", "com.dts.freefireth://"]
+        case "free fire max": schemes += ["freefiremax://", "com.dts.freefiremax://"]
+        case "liÃªn quÃ¢n mobile", "lien quan": schemes += ["com.garena.game.kgvn://"]
+        default: break
+        }
+        for raw in schemes {
+            guard let url = URL(string: raw) else { continue }
+            if UIApplication.shared.canOpenURL(url) {
+                UIApplication.shared.open(url)
+                return
+            }
+        }
+    }
+}
 
-            exit 1
-          fi
+func categoryIcon(_ name: String) -> String {
+    switch name {
+    case "AIM": return "scope"
+    case "ESP": return "eye.fill"
+    case "Free Fire": return "flame.fill"
+    case "Free Fire Max": return "sparkles"
+    case "MOD SKIN": return "paintbrush.fill"
+    case "LiÃªn QuÃ¢n Mobile": return "gamecontroller.fill"
+    default: return "shippingbox.fill"
+    }
+} // ===== SecondaryViews =====
+struct LemonTargetApp: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let bundleID: String
+    let iconAssetName: String
+}
 
-          echo "app=$APP" >> "$GITHUB_OUTPUT"
+enum FFH4XFeatureCategory: String, CaseIterable, Identifiable, Hashable {
+    case aim, chams, modSkin
+    var id: String { rawValue }
+    var title: String {
+        switch self { case .aim: return "Aim"; case .chams: return "Chams"; case .modSkin: return "Mod Skin" }
+    }
+    var subtitle: String {
+        switch self { case .aim: return "Há» trá»£ kÃ©o tÃ¢m"; case .chams: return "Äá»nh vá» nhÃ¬n xuyÃªn tÆ°á»ng"; case .modSkin: return "Mod skin" }
+    }
+    var icon: String {
+        switch self { case .aim: return "scope"; case .chams: return "eye.fill"; case .modSkin: return "tshirt.fill" }
+    }
+    var tint: Color {
+        switch self { case .aim: return .blue; case .chams: return .purple; case .modSkin: return .orange }
+    }
+}
 
-          echo "✅ APP:"
-          echo "$APP"
+struct ProjectAppIcon: View {
+    let assetName: String
+    let size: CGFloat
+    var body: some View {
+        Image(assetName).resizable().scaledToFill()
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: size * 0.23, style: .continuous))
+    }
+}
 
-      # ============================================================
-      # 12. KIỂM TRA INFO APP
-      # ============================================================
-      - name: Show app information
-        shell: bash
-        run: |
-          set -e
+struct InstalledAppIcon: View {
+    let bundleID: String
+    let size: CGFloat
+    @State private var image: UIImage?
+    var body: some View {
+        Group {
+            if let image { Image(uiImage: image).resizable().scaledToFill() }
+            else { Image(systemName: "app.fill").font(.system(size: size * 0.38, weight: .semibold)).frame(maxWidth: .infinity, maxHeight: .infinity) }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: size * 0.23, style: .continuous))
+        .task(id: bundleID) {
+            image = await Task.detached(priority: .userInitiated) { iconForBundleID(bundleID) }.value
+        }
+    }
+}
 
-          APP="${{ steps.app.outputs.app }}"
+// ===== UserRole / Session =====
+enum UserRole: String, CaseIterable, Identifiable {
+    case owner, admin, member
+    var id: String { rawValue }
+    var title: String {
+        switch self { case .owner: return "Owner"; case .admin: return "Admin"; case .member: return "Member" }
+    }
+    var icon: String {
+        switch self { case .owner: return "crown.fill"; case .admin: return "checkmark.shield.fill"; case .member: return "person.fill" }
+    }
+    var needsPassword: Bool { self != .member }
+}
 
-          echo "========================================"
-          echo "        APP INFORMATION"
-          echo "========================================"
+final class Session: ObservableObject {
+    @Published var role: UserRole?
+    private static let passwordHash = "a43535812161a1aec35c04f0b6ea63bb4880d581f3d15df9ba7e68befe6b472e"
+    func verify(_ input: String) -> Bool {
+        let digest = SHA256.hash(data: Data(input.utf8))
+        let hex = digest.map { String(format: "%02x", $0) }.joined()
+        return hex == Session.passwordHash
+    }
+}
 
-          /usr/libexec/PlistBuddy \
-            -c "Print :CFBundleIdentifier" \
-            "$APP/Info.plist" || true
+// ===== Keychain =====
+enum KeychainKeyStore {
+    private static let service = "shinn.license.biometric"
+    private static let account = "activation-key"
 
-          /usr/libexec/PlistBuddy \
-            -c "Print :CFBundleShortVersionString" \
-            "$APP/Info.plist" || true
+    static func save(_ key: String) {
+        let data = Data(key.utf8)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        SecItemDelete(query as CFDictionary)
+        var add = query
+        add[kSecValueData as String] = data
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        SecItemAdd(add as CFDictionary, nil)
+    }
 
-          /usr/libexec/PlistBuddy \
-            -c "Print :CFBundleVersion" \
-            "$APP/Info.plist" || true
+    static func load() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var out: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &out)
+        guard status == errSecSuccess, let data = out as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
 
-      # ============================================================
-      # 13. TẠO PAYLOAD
-      # ============================================================
-      - name: Create Payload
-        shell: bash
-        run: |
-          set -e
+    static func clear() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+}
 
-          echo "========================================"
-          echo "        CREATE PAYLOAD"
-          echo "========================================"
+extension Notification.Name {
+    static let shinnKeyNotice = Notification.Name("shinnKeyNotice")
+}
 
-          rm -rf ipa
-          mkdir -p ipa/Payload
+// ===== Supabase =====
+enum SupabaseConfig {
+    static let projectURL = URL(string: "https://efhqbzdnrtifqjqlqseb.supabase.co")!
+    static let anonKey = "sb_publishable_jnycTCgXRMrluvwJORd_4g_B7ojwi9R"
 
-          cp -R \
-            "${{ steps.app.outputs.app }}" \
-            ipa/Payload/
+    static var activateKeyURL: URL {
+        projectURL.appendingPathComponent("rest/v1/rpc/activate_key")
+    }
+}
 
-          echo "✅ Payload created"
+struct KeyRepoItem: Codable, Hashable, Identifiable {
+    var id: String { name + "|" + url }
+    var name: String
+    var url: String
+    var locked: Bool?
+}
 
-      # ============================================================
-      # 14. TẠO IPA
-      # ============================================================
-      - name: Create IPA
-        shell: bash
-        run: |
-          set -e
+struct ActivateKeyResponse: Decodable {
+    let ok: Bool
+    let error: String?
+    let role: String?
+    let key: String?
+    let expires_at: String?
+    let label: String?
+    let repo_url: String?
+    let repo_locked: Bool?
+    let repos: [KeyRepoItem]?
+}
 
-          echo "========================================"
-          echo "        CREATE IPA"
-          echo "========================================"
+@MainActor
+final class LicenseManager: ObservableObject {
+    @Published var isActivated: Bool
+    @Published var isBusy = false
+    @Published var lastError: String?
+    @Published var boundRole: String?
+    @Published var expiresAt: Date?
+    @Published var savedLicenseKey: String
+    @Published var holderName: String
 
-          cd ipa
+    private let activatedKey = "shinn.license.activated"
+    private let roleKey = "shinn.license.role"
+    private let deviceKey = "shinn.license.device_id"
+    private let savedKey = "shinn.license.key"
+    private let expireKey = "shinn.license.expires"
 
-          zip -qry \
-            "../ShinnCheat-unsigned.ipa" \
-            Payload
+    init() {
+        let defaults = UserDefaults.standard
+        boundRole = defaults.string(forKey: roleKey)
+        savedLicenseKey = defaults.string(forKey: savedKey) ?? ""
+        holderName = defaults.string(forKey: "shinn.license.holder") ?? ""
+        if defaults.object(forKey: expireKey) != nil {
+            expiresAt = Date(timeIntervalSince1970: defaults.double(forKey: expireKey))
+        }
+        isActivated = false
+    }
 
-          cd ..
+    var deviceID: String {
+        let defaults = UserDefaults.standard
+        if let existing = defaults.string(forKey: deviceKey), !existing.isEmpty {
+            return existing
+        }
+        let generated = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+        defaults.set(generated, forKey: deviceKey)
+        return generated
+    }
 
-          if [ ! -f "ShinnCheat-unsigned.ipa" ]; then
-            echo "❌ Không tạo được IPA."
-            exit 1
-          fi
+    private static func parseExpiry(_ raw: String) -> Date? {
+        let f1 = ISO8601DateFormatter()
+        f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f1.date(from: raw) { return d }
+        let f2 = ISO8601DateFormatter()
+        f2.formatOptions = [.withInternetDateTime]
+        if let d = f2.date(from: raw) { return d }
+        return ISO8601DateFormatter().date(from: raw)
+    }
 
-          echo ""
-          echo "✅ IPA CREATED"
-          ls -lh ShinnCheat-unsigned.ipa
+    func activate(key raw: String, language: ShinnLanguage) async -> Bool {
+        let key = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        lastError = nil
+        guard !key.isEmpty else {
+            lastError = "Enter an activation key."
+            return false
+        }
+        isBusy = true
+        defer { isBusy = false }
 
-      # ============================================================
-      # 15. UPLOAD IPA
-      # ============================================================
-      - name: Upload IPA
-        uses: actions/upload-artifact@v4
-        with:
-          name: ShinnCheat-IPA
-          path: ShinnCheat-unsigned.ipa
-          if-no-files-found: error
+        do {
+            let result = try await callActivate(key: key)
+            if result.ok {
+                UserDefaults.standard.set(true, forKey: activatedKey)
+                UserDefaults.standard.set(key, forKey: savedKey)
+                savedLicenseKey = key
+                KeychainKeyStore.save(key)
+                if let label = result.label {
+                    holderName = label
+                    UserDefaults.standard.set(label, forKey: "shinn.license.holder")
+                }
+                let repo = (result.repo_url ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                UserDefaults.standard.set(repo, forKey: "shinn.license.repo")
+                UserDefaults.standard.set(result.repo_locked ?? false, forKey: "shinn.license.repoLocked")
 
-      # ============================================================
-      # 16. UPLOAD ARCHIVE
-      # ============================================================
-      - name: Upload Xcode Archive
-        uses: actions/upload-artifact@v4
-        with:
-          name: ShinnCheat-XCArchive
-          path: build/App.xcarchive
-          if-no-files-found: error
+                var list: [KeyRepoItem] = [
+                    KeyRepoItem(name: "Repo ShinnCheat", url: AppInfo.defaultRepoURL.absoluteString, locked: false)
+                ]
+                if let extra = result.repos {
+                    for r in extra where !r.url.isEmpty {
+                        if !list.contains(where: { $0.url == r.url }) {
+                            list.append(r)
+                        }
+                    }
+                } else if let one = result.repo_url, !one.isEmpty {
+                    list.append(KeyRepoItem(name: "Custom", url: one, locked: result.repo_locked))
+                }
+                if let data = try? JSONEncoder().encode(list) {
+                    UserDefaults.standard.set(data, forKey: "shinn.license.repos")
+                }
 
-      # ============================================================
-      # 17. UPLOAD BUILD LOG NẾU CÓ LỖI
-      # ============================================================
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ShinnCheat-Build-Log
-          path: |
-            build.log
-            source/**/*.log
-          if-no-files-found: ignore
+                if let role = result.role, !role.isEmpty {
+                    UserDefaults.standard.set(role, forKey: roleKey)
+                    boundRole = role
+                }
+                if let exp = result.expires_at, let date = Self.parseExpiry(exp) {
+                    expiresAt = date
+                    UserDefaults.standard.set(date.timeIntervalSince1970, forKey: expireKey)
+                } else {
+                    expiresAt = nil
+                    UserDefaults.standard.removeObject(forKey: expireKey)
+                }
+                isActivated = true
+                return true
+            }
+            lastError = mappedError(result.error)
+            return false
+        } catch {
+            lastError = "Could not reach the key server. Check your connection."
+            return false
+        }
+    }
+
+    func signOutLicense() {
+        let defaults = UserDefaults.standard
+        defaults.set(false, forKey: activatedKey)
+        defaults.removeObject(forKey: roleKey)
+        defaults.removeObject(forKey: savedKey)
+        defaults.removeObject(forKey: expireKey)
+        isActivated = false
+        boundRole = nil
+        savedLicenseKey = ""
+        expiresAt = nil
+        holderName = ""
+        defaults.removeObject(forKey: "shinn.license.holder")
+    }
+
+    func restoreIfValid(language: ShinnLanguage) async -> Bool {
+        let key = savedLicenseKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return false }
+        if let exp = expiresAt, exp < Date(), (boundRole ?? "").lowercased() != "owner" {
+            signOutLicense()
+            return false
+        }
+        return await activate(key: key, language: language)
+    }
+
+    private func mappedError(_ code: String?) -> String {
+        switch code {
+        case "invalid_key": return "Invalid key."
+        case "used_on_other_device": return "This key is already used on another device."
+        case "missing_key": return "Missing key."
+        case "missing_device": return "Missing device id."
+        default: return "Could not activate the key."
+        }
+    }
+
+    private func callActivate(key: String) async throws -> ActivateKeyResponse {
+        var request = URLRequest(url: SupabaseConfig.activateKeyURL)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 20
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(SupabaseConfig.anonKey)", forHTTPHeaderField: "Authorization")
+
+        let body: [String: String] = [
+            "p_key": key,
+            "p_device_id": deviceID
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        print("[Supabase] url=\(request.url?.absoluteString ?? "nil")")
+        print("[Supabase] status=\(http.statusCode)")
+        print("[Supabase] body=\(String(data: data, encoding: .utf8) ?? "nil")")
+
+        guard (200..<300).contains(http.statusCode) else {
+            if http.statusCode == 401 || http.statusCode == 403 {
+                throw URLError(.userAuthenticationRequired)
+            }
+            throw URLError(.badServerResponse)
+        }
+        return try JSONDecoder().decode(ActivateKeyResponse.self, from: data)
+    }
+}
+
+// ===== AbuseGuard =====
+@MainActor
+final class AbuseGuard: ObservableObject {
+    @Published var lockedUntil: Date?
+    private let lockKey = "shinn.abuse.lock"
+    private let keyFailsKey = "shinn.abuse.keyFails"
+    private let passFailsKey = "shinn.abuse.passFails"
+    private let patchTapsKey = "shinn.abuse.patchTaps"
+    private let windowKey = "shinn.abuse.window"
+    private let faceFailsKey = "shinn.abuse.faceFails"
+
+    init() {
+        let d = UserDefaults.standard
+        if d.object(forKey: lockKey) != nil {
+            let until = Date(timeIntervalSince1970: d.double(forKey: lockKey))
+            lockedUntil = until > Date() ? until : nil
+        }
+    }
+
+    var isLocked: Bool {
+        if let until = lockedUntil, until > Date() { return true }
+        return false
+    }
+
+    func remainText() -> String {
+        guard let until = lockedUntil else { return "" }
+        let s = max(0, Int(until.timeIntervalSinceNow))
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    private func bump(_ key: String, limit: Int) {
+        let d = UserDefaults.standard
+        let window = d.double(forKey: windowKey)
+        if Date().timeIntervalSince1970 - window > 600 {
+            d.set(0, forKey: keyFailsKey)
+            d.set(0, forKey: passFailsKey)
+            d.set(0, forKey: patchTapsKey)
+            d.set(Date().timeIntervalSince1970, forKey: windowKey)
+        }
+        let n = d.integer(forKey: key) + 1
+        d.set(n, forKey: key)
+        if n >= limit { lock() }
+    }
+
+    func keyFailed() { bump(keyFailsKey, limit: 5) }
+    func passFailed() { bump(passFailsKey, limit: 5) }
+    func patchToggled() { bump(patchTapsKey, limit: 15) }
+    func keyOk() { UserDefaults.standard.set(0, forKey: keyFailsKey) }
+    func passOk() { UserDefaults.standard.set(0, forKey: passFailsKey) }
+
+    func faceFailed() -> Int {
+        let d = UserDefaults.standard
+        let n = d.integer(forKey: faceFailsKey) + 1
+        d.set(n, forKey: faceFailsKey)
+        return n
+    }
+    func faceOk() { UserDefaults.standard.set(0, forKey: faceFailsKey) }
+    func faceFailCount() -> Int { UserDefaults.standard.integer(forKey: faceFailsKey) }
+
+    private func lock() {
+        let until = Date().addingTimeInterval(10 * 60)
+        lockedUntil = until
+        UserDefaults.standard.set(until.timeIntervalSince1970, forKey: lockKey)
+        UserDefaults.standard.set(0, forKey: keyFailsKey)
+        UserDefaults.standard.set(0, forKey: passFailsKey)
+        UserDefaults.standard.set(0, forKey: patchTapsKey)
+    }
+} // ===== ContentView =====
+struct ContentView: View {
+    @StateObject var session = Session()
+    @StateObject private var license = LicenseManager()
+    @StateObject private var abuse = AbuseGuard()
+    @StateObject private var settings = AppSettings()
+    @StateObject private var store = RepoStore()
+    @State private var path: [Route] = []
+
+    var body: some View {
+        Group {
+            if abuse.isLocked {
+                LockoutView(abuse: abuse)
+            } else if !license.isActivated {
+                ActivateKeyView()
+            } else if session.role == nil {
+                RoleGateView()
+            } else {
+                NavigationStack(path: $path) {
+                    HomeView(open: { path.append($0) })
+                        .navigationDestination(for: Route.self) { route in
+                            switch route {
+                            case .packages(let category):
+                                PackagesView(initialCategory: category)
+                            case .detail(let id):
+                                PackageDetailView(packageID: id)
+                            case .settings:
+                                SettingsView()
+                            case .about:
+                                AboutView()
+                            case .support:
+                                SupportView()
+                            case .repositoryManager:
+                                RepositoryManagerView()
+                            case .patchBuilder:
+                                PatchBuilderView()
+                            }
+                        }
+                }
+                .tint(.primary)
+            }
+        }
+        .environmentObject(session)
+        .environmentObject(license)
+        .environmentObject(abuse)
+        .environmentObject(settings)
+        .environmentObject(store)
+        .preferredColorScheme(settings.theme.colorScheme)
+        .task {
+            await store.bootstrap(autoRefresh: settings.autoRefresh)
+            if !license.isActivated {
+                _ = await license.restoreIfValid(language: .en)
+            }
+            if license.isActivated,
+               let raw = license.boundRole,
+               let role = UserRole(rawValue: raw.lowercased()) {
+                session.role = role
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: session.role)
+        .animation(.easeInOut(duration: 0.25), value: license.isActivated)
+    }
+}
+
+// ===== LockoutView =====
+struct LockoutView: View {
+    @ObservedObject var abuse: AbuseGuard
+    let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        ZStack {
+            BackgroundView()
+            VStack(spacing: 16) {
+                Image(systemName: "lock.fill").font(.system(size: 44))
+                Text("Temporarily locked").font(.title2.bold())
+                Text("Try again in \(abuse.remainText())")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .onReceive(timer) { _ in
+            if !abuse.isLocked { abuse.lockedUntil = nil }
+            abuse.objectWillChange.send()
+        }
+    }
+}
+
+// ===== ActivateKeyView =====
+struct ActivateKeyView: View {
+    @EnvironmentObject var settings: AppSettings
+    @EnvironmentObject var session: Session
+    @EnvironmentObject var license: LicenseManager
+    @EnvironmentObject var abuse: AbuseGuard
+
+    @State private var keyText = ""
+    @State private var isBiometricRunning = false
+    @State private var didAutoStartBiometric = false
+    @FocusState private var focused: Bool
+
+    private var hasSavedKey: Bool {
+        (KeychainKeyStore.load() ?? "").isEmpty == false
+    }
+
+    var body: some View {
+        ZStack {
+            BackgroundView()
+            ScreenPrivacyGuard()
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 22) {
+                    VStack(spacing: 22) {
+                        Image(systemName: hasSavedKey ? "faceid" : "key.fill")
+                            .font(.system(size: 46))
+
+                        VStack(spacing: 6) {
+                            Text("SHINN CHEAT")
+                                .font(.system(size: 32, weight: .black, design: .rounded))
+                                .tracking(-0.8)
+                            Text(hasSavedKey
+                                ? "Face ID or enter the key manually"
+                                : "Enter a key to use the app")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.top, 40)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("Activation key", systemImage: "lock.fill")
+                            .font(.headline)
+
+                        SecureField("Enter key manually or use Face ID", text: $keyText)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled(true)
+                            .focused($focused)
+                            .padding(14)
+                            .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                        if let err = license.lastError, !err.isEmpty {
+                            Text(err).font(.footnote.bold()).foregroundStyle(.red)
+                        }
+
+                        if hasSavedKey {
+                            Text("No Face ID or broken Face ID? You can still enter your key manually above.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+
+                            Button {
+                                Task { await biometricUnlock() }
+                            } label: {
+                                Label("Retry Face ID", systemImage: "faceid")
+                                    .font(.system(size: 15, weight: .bold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 13)
+                                    .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(license.isBusy || isBiometricRunning)
+                        }
+
+                        Button {
+                            Task { await submit() }
+                        } label: {
+                            HStack {
+                                if license.isBusy {
+                                    ProgressView().tint(Color(.systemBackground))
+                                }
+                                Text("Activate").font(.system(size: 15, weight: .bold))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                            .background(Color.primary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .foregroundStyle(Color(.systemBackground))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(license.isBusy || keyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    .padding(16)
+                    .shinnGlass()
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 30)
+            }
+            .scrollDismissesKeyboard(.interactively)
+        }
+        .onAppear {
+            keyText = ""
+            if hasSavedKey {
+                guard !didAutoStartBiometric else { return }
+                didAutoStartBiometric = true
+                Task { await biometricUnlock() }
+            } else {
+                DispatchQueue.main.async { focused = true }
+            }
+        }
+    }
+
+    private func quitApp() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { exit(0) }
+    }
+
+    private func biometricUnlock() async {
+        guard !isBiometricRunning else { return }
+        guard let stored = KeychainKeyStore.load(), !stored.isEmpty else { return }
+
+        isBiometricRunning = true
+        defer { isBiometricRunning = false }
+
+        let role = (license.boundRole ?? "").lowercased()
+        if role != "owner", let exp = license.expiresAt, exp <= Date() {
+            KeychainKeyStore.clear()
+            return
+        }
+
+        keyText = ""
+
+        let ctx = LAContext()
+        var evalError: NSError?
+        guard ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &evalError) else {
+            license.lastError = "This device has no Face ID / Touch ID."
+            return
+        }
+
+        do {
+            let ok = try await ctx.evaluatePolicy(
+                .deviceOwnerAuthenticationWithBiometrics,
+                localizedReason: "Scan Face ID to fill your key"
+            )
+            guard ok else { await handleFaceFail(); return }
+            abuse.faceOk()
+            license.lastError = nil
+            keyText = stored
+            await submit()
+        } catch let error as LAError {
+            switch error.code {
+            case .authenticationFailed: await handleFaceFail()
+            case .biometryLockout:
+                license.lastError = "Face ID locked."
+                quitApp()
+            case .userCancel, .systemCancel, .appCancel:
+                license.lastError = "Cancelled. Tap Retry Face ID."
+            default: await handleFaceFail()
+            }
+        } catch {
+            await handleFaceFail()
+        }
+    }
+
+    private func handleFaceFail() async {
+        let n = abuse.faceFailed()
+        license.lastError = "Face ID failed (\(n)/3)"
+        keyText = ""
+        if n >= 3 { quitApp() }
+    }
+
+    private func submit() async {
+        let raw = keyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return }
+
+        let ok = await license.activate(key: raw, language: .en)
+        if ok {
+            abuse.keyOk()
+            abuse.faceOk()
+            KeychainKeyStore.save(raw)
+        } else {
+            abuse.keyFailed()
+            if hasSavedKey { keyText = "" }
+        }
+        guard ok else { return }
+
+        if let rawRole = license.boundRole,
+           let role = UserRole(rawValue: rawRole.lowercased()) {
+            session.role = role
+        } else {
+            session.role = .member
+        }
+    }
+}
+
+// ===== RoleGateView =====
+struct RoleGateView: View {
+    @EnvironmentObject var settings: AppSettings
+    @EnvironmentObject var session: Session
+    @EnvironmentObject var abuse: AbuseGuard
+    @State private var pending: UserRole?
+    @State private var password = ""
+    @State private var attempts = 0
+    @State private var closing = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        ZStack {
+            BackgroundView()
+            ScreenPrivacyGuard()
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 22) {
+                    if pending == nil {
+                        VStack(spacing: 22) {
+                            Image(systemName: "crown.fill").font(.system(size: 46))
+                            VStack(spacing: 6) {
+                                Text("SHINN CHEAT")
+                                    .font(.system(size: 32, weight: .black, design: .rounded))
+                                    .tracking(-0.8)
+                                Text("Choose a role to activate")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.top, 40)
+                    } else {
+                        Color.clear.frame(height: 12)
+                    }
+
+                    VStack(spacing: 12) {
+                        ForEach(UserRole.allCases) { role in
+                            roleCard(role)
+                        }
+                    }
+                    .padding(.top, 8)
+
+                    if let role = pending {
+                        passwordCard(role)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.2), value: pending)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 30)
+            }
+            .scrollDismissesKeyboard(.interactively)
+        }
+    }
+
+    private func roleCard(_ role: UserRole) -> some View {
+        Button(action: { select(role) }) {
+            HStack(spacing: 16) {
+                IconBox(systemName: role.icon, size: 52)
+                Text(role.title).font(.system(size: 20, weight: .bold, design: .rounded))
+                Spacer(minLength: 0)
+            }
+            .padding(14)
+            .contentShape(Rectangle())
+            .shinnGlass()
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func passwordCard(_ role: UserRole) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Password for " + role.title, systemImage: "lock.fill")
+                .font(.headline)
+
+            SecureField("Enter password", text: $password)
+                .focused($focused)
+                .keyboardType(.numberPad)
+                .padding(14)
+                .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .onSubmit { submit() }
+                .disabled(closing)
+
+            if closing {
+                Text("Wrong password. The app will close.")
+                    .font(.footnote.bold())
+                    .foregroundStyle(.red)
+            } else if attempts > 0 {
+                Text("You are a cow")
+                    .font(.footnote.bold())
+                    .foregroundStyle(.red)
+            }
+
+            HStack(spacing: 10) {
+                Button(action: cancel) {
+                    Text("Cancel")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                        .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                Button(action: submit) {
+                    Text("Confirm")
+                        .font(.system(size: 15, weight: .bold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                        .background(Color.primary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .foregroundStyle(Color(.systemBackground))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(16)
+        .shinnGlass()
+    }
+
+    private func select(_ role: UserRole) {
+        if closing { return }
+        if role.needsPassword {
+            pending = role
+            password = ""
+            DispatchQueue.main.async { focused = true }
+        } else {
+            session.role = role
+        }
+    }
+
+    private func cancel() {
+        if closing { return }
+        pending = nil
+        password = ""
+        focused = false
+    }
+
+    private func submit() {
+        guard let role = pending, !closing else { return }
+        if session.verify(password) {
+            session.role = role
+            pending = nil
+            password = ""
+            attempts = 0
+            abuse.passOk()
+        } else {
+            attempts += 1
+            password = ""
+            abuse.passFailed()
+            if attempts >= 5 { focused = false }
+        }
+    }
+}
+
+// ===== OwnerKeyManager =====
+struct CreateKeyResponse: Codable {
+    let key: String
+}
+
+struct ShinnKeyRow: Codable, Identifiable {
+    let key: String
+    let role: String?
+    let expires_at: String?
+    let is_vip: Bool?
+    let device_id: String?
+    let label: String?
+    var id: String { key }
+}
+
+@MainActor
+final class OwnerKeyManager: ObservableObject {
+    @Published var createdKey = ""
+    @Published var keys: [ShinnKeyRow] = []
+    @Published var isLoading = false
+    @Published var error: String?
+    @Published var selectedRole = "member"
+    @Published var selectedDays = 7
+    @Published var selectedHours = 0
+    @Published var createCount = 1
+    @Published var lifetime = false
+    @Published var keyLabel = ""
+
+    private var actorKey: String {
+        UserDefaults.standard.string(forKey: "shinn.license.key")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+    private var actorRole: String {
+        UserDefaults.standard.string(forKey: "shinn.license.role")?.lowercased() ?? ""
+    }
+
+    private func actorPayload() -> [String: String] {
+        ["p_created_by_key": actorKey, "p_creator_role": actorRole]
+    }
+
+    func createKey() async {
+        isLoading = true
+        error = nil
+        defer { isLoading = false }
+        do {
+            var request = URLRequest(url: SupabaseConfig.projectURL.appendingPathComponent("/rest/v1/rpc/create_shinn_key"))
+            request.httpMethod = "POST"
+            request.timeoutInterval = 20
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(SupabaseConfig.anonKey)", forHTTPHeaderField: "Authorization")
+            var body: [String: Any] = actorPayload()
+            body["p_role"] = selectedRole
+            body["p_days"] = lifetime ? -1 : selectedDays
+            body["p_hours"] = lifetime ? 0 : selectedHours
+            body["p_count"] = max(1, min(createCount, 20))
+            body["p_label"] = keyLabel
+            guard !actorKey.isEmpty, !actorRole.isEmpty else {
+                error = "Missing active Owner/Admin key."
+                return
+            }
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, 200...299 ~= http.statusCode else {
+                throw URLError(.badServerResponse)
+            }
+            if let list = try? JSONDecoder().decode([String].self, from: data), !list.isEmpty {
+                createdKey = list.joined(separator: "\n")
+            } else if let parsed = try? JSONDecoder().decode(CreateKeyResponse.self, from: data), !parsed.key.isEmpty {
+                createdKey = parsed.key
+            } else {
+                createdKey = String(decoding: data, as: UTF8.self)
+                    .replacingOccurrences(of: "\"", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            createdKey = createdKey
+                .replacingOccurrences(of: "\\n", with: "\n")
+                .replacingOccurrences(of: "\r", with: "")
+            if createdKey.isEmpty { error = "Could not create key" }
+            await listKeys()
+        } catch {
+            self.error = "Could not create key"
+        }
+    }
+
+    var prettyCreated: String {
+        createdKey
+            .replacingOccurrences(of: "\\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "")
+    }
+
+    func deleteAllKeys() async {
+        do {
+            var request = URLRequest(url: SupabaseConfig.projectURL.appendingPathComponent("/rest/v1/rpc/delete_all_shinn_keys"))
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(SupabaseConfig.anonKey)", forHTTPHeaderField: "Authorization")
+            guard !actorKey.isEmpty, !actorRole.isEmpty else {
+                error = "Missing active Owner/Admin key."
+                return
+            }
+            request.httpBody = try JSONSerialization.data(withJSONObject: actorPayload())
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, 200...299 ~= http.statusCode else {
+                error = "Server rejected delete-all request."
+                return
+            }
+            createdKey = ""
+            await listKeys()
+        } catch {
+            self.error = "Could not delete keys"
+        }
+    }
+
+    func listKeys() async {
+        do {
+            var request = URLRequest(url: SupabaseConfig.projectURL.appendingPathComponent("/rest/v1/rpc/list_shinn_keys"))
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(SupabaseConfig.anonKey)", forHTTPHeaderField: "Authorization")
+            guard !actorKey.isEmpty, !actorRole.isEmpty else { return }
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "p_actor_key": actorKey,
+                "p_actor_role": actorRole
+            ])
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, 200...299 ~= http.statusCode else { return }
+            keys = (try? JSONDecoder().decode([ShinnKeyRow].self, from: data)) ?? []
+        } catch {
+            // keep previous list
+        }
+    }
+
+    func deleteKey(_ key: String) async {
+        do {
+            var request = URLRequest(url: SupabaseConfig.projectURL.appendingPathComponent("/rest/v1/rpc/delete_shinn_key"))
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(SupabaseConfig.anonKey)", forHTTPHeaderField: "Authorization")
+            guard !actorKey.isEmpty, !actorRole.isEmpty else {
+                error = "Missing active Owner/Admin key."
+                return
+            }
+            var body = actorPayload()
+            body["p_key"] = key
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, 200...299 ~= http.statusCode else {
+                error = "Server rejected delete request."
+                return
+            }
+            if createdKey == key { createdKey = "" }
+            await listKeys()
+        } catch {
+            self.error = "Could not delete key"
+        }
+    }
+}
+
+// ===== RepositoryManagerView =====
+struct RepositoryManagerView: View {
+    @StateObject private var manager = OwnerKeyManager()
+    @State private var repoURL = ""
+    @State private var repoName = ""
+    @State private var selectedKey = ""
+    @State private var locked = false
+    @State private var status = ""
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("REPOSITORY MANAGER").font(.title.bold())
+                Text("Assign a JSON repo URL to a key. Lock blocks packages.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                TextField("Repo name (VIP 1)", text: $repoName)
+                    .padding(12)
+                    .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                TextField("https://.../shinn.json", text: $repoURL)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                    .padding(12)
+                    .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                Toggle("Lock repo for this key", isOn: $locked)
+
+                Button("Save to selected key") {
+                    Task { await save() }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(selectedKey.isEmpty)
+
+                if !status.isEmpty {
+                    Text(status).font(.footnote)
+                }
+
+                ForEach(manager.keys) { row in
+                    Button {
+                        selectedKey = row.key
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(row.key).font(.headline)
+                            Text("\((row.label ?? "").isEmpty ? (row.role ?? "member") : row.label!) â¢ \(selectedKey == row.key ? "selected" : "")")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .shinnGlass()
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding()
+        }
+        .navigationTitle("Repos")
+        .task { await manager.listKeys() }
+    }
+
+    func save() async {
+        status = "Savingâ¦"
+        do {
+            var request = URLRequest(url: SupabaseConfig.projectURL.appendingPathComponent("/rest/v1/rpc/add_key_repo"))
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(SupabaseConfig.anonKey)", forHTTPHeaderField: "Authorization")
+            let actorKey = UserDefaults.standard.string(forKey: "shinn.license.key")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let actorRole = UserDefaults.standard.string(forKey: "shinn.license.role")?.lowercased() ?? ""
+            guard !actorKey.isEmpty, !actorRole.isEmpty else {
+                status = "Missing active Owner/Admin key"
+                return
+            }
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "p_key": selectedKey,
+                "p_repo_url": repoURL.trimmingCharacters(in: .whitespacesAndNewlines),
+                "p_locked": locked,
+                "p_actor_key": actorKey,
+                "p_actor_role": actorRole,
+                "p_repo_name": repoName.trimmingCharacters(in: .whitespacesAndNewlines)
+            ])
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, 200...299 ~= http.statusCode else {
+                status = String(decoding: data, as: UTF8.self)
+                return
+            }
+            status = "Saved"
+            await manager.listKeys()
+        } catch {
+            status = "Failed"
+        }
+    }
+}
+
+// ===== OwnerPanelView =====
+struct OwnerPanelView: View {
+    @EnvironmentObject var license: LicenseManager
+    @EnvironmentObject var session: Session
+    @StateObject private var manager = OwnerKeyManager()
+    @State private var copied = false
+
+    private let durations = [1, 3, 7, 30, 90, 365]
+
+    var body: some View {
+        ZStack {
+            BackgroundView()
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("OWNER PANEL").font(.system(size: 28, weight: .black, design: .rounded))
+                        Text("Create keys, set role and duration, delete keys")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Assigned to").font(.headline)
+                        TextField("Name / who this key is for", text: $manager.keyLabel)
+                            .padding(12)
+                            .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                        Text("Role").font(.headline)
+                        Picker("Role", selection: $manager.selectedRole) {
+                            Text("Member").tag("member")
+                            Text("Admin").tag("admin")
+                        }
+                        .pickerStyle(.segmented)
+
+                        Text("Duration").font(.headline)
+                        Picker("Duration", selection: $manager.selectedHours) {
+                            Text("1 hour (Test)").tag(1)
+                            Text("Use days").tag(0)
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: manager.selectedHours) { v in
+                            if v == 1 { manager.lifetime = false }
+                        }
+
+                        if manager.selectedHours == 0 {
+                            Toggle("Lifetime / unlimited", isOn: $manager.lifetime)
+                            if !manager.lifetime {
+                                Picker("Days", selection: $manager.selectedDays) {
+                                    ForEach(durations, id: \.self) { d in
+                                        Text(d == 365 ? "1 year" : "\(d) days").tag(d)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                            }
+                        } else {
+                            Text("Key name: Shinn-Cheat-TestN")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Stepper("How many: \(manager.createCount)", value: $manager.createCount, in: 1...20)
+
+                        if manager.createdKey.isEmpty {
+                            Text("No key created yet")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text(manager.prettyCreated)
+                                .font(.system(.body, design: .monospaced).weight(.bold))
+                                .textSelection(.enabled)
+                            Button {
+                                UIPasteboard.general.string = manager.prettyCreated
+                                copied = true
+                            } label: {
+                                Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                            }
+                            .buttonStyle(.plain)
+                            .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+
+                        Button {
+                            Task {
+                                copied = false
+                                await manager.createKey()
+                            }
+                        } label: {
+                            Group {
+                                if manager.isLoading {
+                                    ProgressView().tint(Color(.systemBackground))
+                                } else {
+                                    Text("CREATE KEY")
+                                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 15)
+                            .background(Color.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .foregroundStyle(Color(.systemBackground))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(manager.isLoading)
+
+                        if let error = manager.error {
+                            Text(error).font(.caption.bold()).foregroundStyle(.red)
+                        }
+                    }
+                    .padding(16)
+                    .shinnGlass()
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Existing keys").font(.headline)
+                        if manager.keys.isEmpty {
+                            Text("No keys loaded")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        ForEach(manager.keys) { row in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(row.key).font(.system(.footnote, design: .monospaced).weight(.bold))
+                                    Text("\(row.label?.isEmpty == false ? row.label! : (row.role ?? "member").capitalized) â¢ \((row.role ?? "member").capitalized) â¢ \(row.expires_at ?? "lifetime")")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if session.role == .owner && row.key != "Shinn-Ower" {
+                                    Button("Delete") {
+                                        Task { await manager.deleteKey(row.key) }
+                                    }
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.red)
+                                }
+                            }
+                            .padding(.vertical, 6)
+                        }
+                    }
+                    .padding(16)
+                    .shinnGlass()
+
+                    if session.role == .owner {
+                        Button {
+                            Task { await manager.deleteAllKeys() }
+                        } label: {
+                            Label("Delete all keys", systemImage: "trash")
+                                .font(.subheadline.bold())
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if session.role == .owner {
+                        NavigationLink(value: Route.patchBuilder) {
+                            Label("Create Patch", systemImage: "plus.app.fill")
+                                .font(.subheadline.bold())
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 13)
+                                .background(Color.primary, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                                .foregroundStyle(Color(.systemBackground))
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Button {
+                        session.role = nil
+                        license.signOutLicense()
+                    } label: {
+                        Label("Sign out / Change key", systemImage: "rectangle.portrait.and.arrow.right")
+                            .font(.subheadline.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 16)
+            }
+        }
+        .navigationTitle("Owner")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await manager.listKeys() }
+    }
+}
+
+// ===== PatchBuilderView (Enhanced, Owner only, preset FF Max / FF) =====
+struct PatchBuilderView: View {
+    @EnvironmentObject var session: Session
+    @State private var identifier = ""
+    @State private var name = ""
+    @State private var author = "Shinn Cheat"
+    @State private var version = "3105"
+    @State private var summary = ""
+    @State private var description = "Shinn Cheat Resource"
+    @State private var category = "Patch"
+    @State private var tags = ""
+    @State private var download = ""
+    @State private var sha256 = ""
+    @State private var size = ""
+    @State private var icon = "https://raw.githubusercontent.com/ShinnCheatCode/Mhieuu/main/IMG_0621.jpeg"
+    @State private var patchPath = ""
+    @State private var openURL = ""
+    @State private var copied = false
+    @State private var saved = false
+
+    @State private var showImporter = false
+    @State private var isHashing = false
+    @State private var hashError: String?
+    @State private var isTestingURL = false
+    @State private var urlTestStatus: String?
+    @State private var urlTestOK = false
+    @State private var drafts: [PatchDraft] = PatchDraft.loadAll()
+    @State private var showDrafts = false
+    @State private var shareURL: URL?
+    @State private var selectedPreset: PresetBundle?
+
+    struct PresetBundle: Identifiable, Hashable {
+        let id: String
+        let label: String
+        let bundleID: String
+        let openURL: String
+        let category: String
+        let tags: String
+
+        static let all: [PresetBundle] = [
+            PresetBundle(id: "ffmax", label: "Free Fire Max", bundleID: "com.dts.freefiremax", openURL: "freefiremax://", category: "Free Fire Max", tags: "Free Fire Max, Patch"),
+            PresetBundle(id: "ffth", label: "Free Fire", bundleID: "com.dts.freefireth", openURL: "freefire://", category: "Free Fire", tags: "Free Fire, Patch")
+        ]
+    }
+
+    private var isOwner: Bool { session.role == .owner }
+
+    struct PatchDraft: Identifiable, Codable {
+        var id = UUID()
+        var identifier: String
+        var json: String
+        var savedAt: Date
+
+        static func loadAll() -> [PatchDraft] {
+            guard let data = UserDefaults.standard.data(forKey: "shinn.patch.drafts"),
+                  let list = try? JSONDecoder().decode([PatchDraft].self, from: data) else { return [] }
+            return list
+        }
+        static func saveAll(_ list: [PatchDraft]) {
+            if let data = try? JSONEncoder().encode(list) {
+                UserDefaults.standard.set(data, forKey: "shinn.patch.drafts")
+            }
+        }
+    }
+
+    private var normalizedHash: String {
+        sha256.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+    private var hashIsValid: Bool {
+        normalizedHash.isEmpty || (normalizedHash.count == 64 && normalizedHash.allSatisfy { $0.isHexDigit })
+    }
+
+    private var generated: String {
+        var object: [String: Any] = [
+            "identifier": identifier.trimmingCharacters(in: .whitespacesAndNewlines),
+            "name": name.trimmingCharacters(in: .whitespacesAndNewlines),
+            "download": download.trimmingCharacters(in: .whitespacesAndNewlines)
+        ]
+
+        func put(_ key: String, _ value: String) {
+            let v = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !v.isEmpty { object[key] = v }
+        }
+
+        put("author", author)
+        put("version", version)
+        put("summary", summary)
+        put("description", description)
+        put("category", category)
+        put("icon", icon)
+        put("patchPath", patchPath)
+        put("openURL", openURL)
+
+        let parsedTags = tags.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        if !parsedTags.isEmpty { object["tags"] = parsedTags }
+
+        if let n = Int(size.trimmingCharacters(in: .whitespacesAndNewlines)), n >= 0 {
+            object["size"] = n
+        }
+        if !normalizedHash.isEmpty { object["sha256"] = normalizedHash }
+
+        guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]) else { return "{}" }
+        return String(data: data, encoding: .utf8) ?? "{}"
+    }
+
+    private var valid: Bool {
+        isOwner &&
+        !identifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !download.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        hashIsValid
+    }
+
+    var body: some View {
+        Group {
+            if !isOwner {
+                VStack(spacing: 14) {
+                    Image(systemName: "lock.fill").font(.system(size: 44, weight: .semibold)).foregroundStyle(.secondary)
+                    Text("Owner only").font(.title3.bold())
+                    Text("Only the Owner can create patch entries.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center).padding(.horizontal, 30)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(40)
+            } else {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("CREATE PATCH").font(.system(size: 28, weight: .black, design: .rounded))
+                            Text("Chá» Owner táº¡o ÄÆ°á»£c. Chá»n preset bundle ID bÃªn dÆ°á»i Äá» Äiá»n nhanh.")
+                                .font(.subheadline).foregroundStyle(.secondary)
+                        }
+
+                        formSection("Preset Bundle ID") {
+                            HStack(spacing: 10) {
+                                ForEach(PresetBundle.all) { preset in
+                                    Button { applyPreset(preset) } label: {
+                                        VStack(spacing: 6) {
+                                            Image(systemName: preset.id == "ffmax" ? "sparkles" : "flame.fill").font(.title3)
+                                            Text(preset.label).font(.caption.bold())
+                                            Text(preset.bundleID).font(.caption2.monospaced())
+                                                .foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.6)
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 12)
+                                        .background((selectedPreset == preset ? Color.primary : Color.primary.opacity(0.08)), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                        .foregroundStyle(selectedPreset == preset ? Color(.systemBackground) : Color.primary)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+
+                        HStack(spacing: 10) {
+                            Button { showImporter = true } label: {
+                                Label(isHashing ? "Äang tÃ­nhâ¦" : "Import .3105", systemImage: "doc.badge.plus")
+                                    .font(.subheadline.bold()).frame(maxWidth: .infinity).padding(.vertical, 12)
+                                    .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
+                            .buttonStyle(.plain).disabled(isHashing)
+
+                            Button { Task { await testDownloadURL() } } label: {
+                                Label(isTestingURL ? "Äang testâ¦" : "Test URL", systemImage: "network")
+                                    .font(.subheadline.bold()).frame(maxWidth: .infinity).padding(.vertical, 12)
+                                    .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
+                            .buttonStyle(.plain).disabled(isTestingURL || download.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+
+                        if let hashError { Text(hashError).font(.caption.bold()).foregroundStyle(.red) }
+                        if let urlTestStatus { Text(urlTestStatus).font(.caption.bold()).foregroundStyle(urlTestOK ? .green : .red) }
+
+                        formSection("ThÃ´ng tin cÆ¡ báº£n") {
+                            field("Identifier", text: $identifier, placeholder: "com.shinn.patchname")
+                            field("Name", text: $name, placeholder: "Patch name")
+                            field("Author", text: $author, placeholder: "Shinn")
+                            field("Version", text: $version, placeholder: "3105")
+                            field("Category", text: $category, placeholder: "Free Fire Max / Free Fire / Patch")
+                            field("Tags", text: $tags, placeholder: "Free Fire Max, Patch")
+                        }
+
+                        formSection("File") {
+                            field("Download URL", text: $download, placeholder: "https://raw.githubusercontent.com/...")
+                            field("SHA-256", text: $sha256, placeholder: "64 kÃ½ tá»± hex")
+                            if !hashIsValid {
+                                Text("SHA256 pháº£i lÃ  64 kÃ½ tá»± hex").font(.caption2.bold()).foregroundStyle(.red)
+                            }
+                            field("Size (bytes)", text: $size, placeholder: "1048576")
+                        }
+
+                        formSection("Hiá»n thá» (tuá»³ chá»n)") {
+                            field("Summary", text: $summary, placeholder: "MÃ´ táº£ ngáº¯n")
+                            field("Description", text: $description, placeholder: "MÃ´ táº£ chi tiáº¿t")
+                            field("Icon URL", text: $icon, placeholder: "https://...")
+                            field("Patch path", text: $patchPath, placeholder: "relative/path")
+                            field("Open URL", text: $openURL, placeholder: "freefire:// hoáº·c freefiremax://")
+                        }
+
+                        Button {
+                            UIPasteboard.general.string = generated
+                            copied = true
+                            saved = false
+                        } label: {
+                            Label(copied ? "ÄÃ£ copy JSON" : "Copy JSON", systemImage: copied ? "checkmark" : "doc.on.doc")
+                                .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
+                                .background(Color.primary, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                                .foregroundStyle(Color(.systemBackground))
+                        }
+                        .buttonStyle(.plain).disabled(!valid)
+
+                        HStack(spacing: 10) {
+                            Button { saveDraft() } label: {
+                                Label(saved ? "ÄÃ£ lÆ°u" : "LÆ°u draft", systemImage: saved ? "checkmark.circle" : "square.and.arrow.down")
+                                    .frame(maxWidth: .infinity).padding(.vertical, 13)
+                                    .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            }
+                            .buttonStyle(.plain).disabled(!valid)
+
+                            if let shareURL {
+                                ShareLink(item: shareURL) {
+                                    Label("Share", systemImage: "square.and.arrow.up")
+                                        .frame(maxWidth: .infinity).padding(.vertical, 13)
+                                        .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                }
+                            } else {
+                                Button { exportJSON() } label: {
+                                    Label("Export", systemImage: "square.and.arrow.up")
+                                        .frame(maxWidth: .infinity).padding(.vertical, 13)
+                                        .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                }
+                                .buttonStyle(.plain).disabled(!valid)
+                            }
+                        }
+
+                        if !drafts.isEmpty {
+                            formSection("Drafts (\(drafts.count))") {
+                                Button { showDrafts.toggle() } label: {
+                                    HStack {
+                                        Text(showDrafts ? "áº¨n drafts" : "Xem drafts")
+                                        Spacer()
+                                        Image(systemName: showDrafts ? "chevron.up" : "chevron.down")
+                                    }
+                                    .font(.subheadline.bold())
+                                }
+                                .buttonStyle(.plain)
+
+                                if showDrafts {
+                                    ForEach(drafts) { d in
+                                        Button { loadDraft(d) } label: {
+                                            HStack {
+                                                VStack(alignment: .leading, spacing: 2) {
+                                                    Text(d.identifier).font(.footnote.bold())
+                                                    Text(d.savedAt.formatted(date: .abbreviated, time: .shortened))
+                                                        .font(.caption2).foregroundStyle(.secondary)
+                                                }
+                                                Spacer()
+                                                Image(systemName: "arrow.down.doc")
+                                            }
+                                            .padding(.vertical, 6)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+
+                                    Button(role: .destructive) {
+                                        drafts.removeAll()
+                                        PatchDraft.saveAll(drafts)
+                                    } label: {
+                                        Label("XoÃ¡ táº¥t cáº£ drafts", systemImage: "trash").font(.caption.bold())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Generated JSON").font(.headline)
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                Text(generated)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .textSelection(.enabled)
+                                    .padding(12)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                    }
+                    .padding(18)
+                }
+            }
+        }
+        .navigationTitle("Create Patch")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showImporter) {
+            ShinnDocumentPicker(
+                allowsMultipleSelection: false,
+                onSelection: { result in
+                    showImporter = false
+                    if case .success(let urls) = result, let url = urls.first {
+                        Task { await importPackage(url) }
+                    }
+                },
+                onCancel: { showImporter = false }
+            )
+            .ignoresSafeArea()
+        }
+    }
+
+    private func applyPreset(_ preset: PresetBundle) {
+        selectedPreset = preset
+        identifier = "com.shinn.\(preset.id).patch"
+        if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            name = "\(preset.label) Patch"
+        }
+        category = preset.category
+        tags = preset.tags
+        openURL = preset.openURL
+        if summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            summary = "\(preset.label) patch"
+        }
+    }
+
+    @ViewBuilder
+    private func formSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title).font(.headline)
+            content()
+        }
+        .padding(15)
+        .shinnGlass()
+    }
+
+    private func field(_ title: String, text: Binding<String>, placeholder: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title).font(.caption.bold()).foregroundStyle(.secondary)
+            TextField(placeholder, text: text)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .padding(12)
+                .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+    }
+
+    private func importPackage(_ url: URL) async {
+        isHashing = true
+        hashError = nil
+        defer { isHashing = false }
+
+        let hasAccess = url.startAccessingSecurityScopedResource()
+        defer { if hasAccess { url.stopAccessingSecurityScopedResource() } }
+
+        do {
+            let data = try Data(contentsOf: url, options: .mappedIfSafe)
+            size = "\(data.count)"
+            let digest = SHA256.hash(data: data)
+            sha256 = digest.map { String(format: "%02x", $0) }.joined()
+
+            if identifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let base = url.deletingPathExtension().lastPathComponent
+                identifier = "com.shinn." + base
+                    .lowercased()
+                    .folding(options: .diacriticInsensitive, locale: .current)
+                    .replacingOccurrences(of: " ", with: "")
+            }
+            if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                name = url.deletingPathExtension().lastPathComponent
+            }
+        } catch {
+            hashError = "KhÃ´ng Äá»c ÄÆ°á»£c file: \(error.localizedDescription)"
+        }
+    }
+
+    private func testDownloadURL() async {
+        let raw = download.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: raw), url.scheme != nil else {
+            urlTestStatus = "URL khÃ´ng há»£p lá»"
+            urlTestOK = false
+            return
+        }
+        isTestingURL = true
+        urlTestStatus = nil
+        defer { isTestingURL = false }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "HEAD"
+        request.timeoutInterval = 15
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                urlTestStatus = "KhÃ´ng cÃ³ pháº£n há»i"
+                urlTestOK = false
+                return
+            }
+            if (200..<300).contains(http.statusCode) {
+                let len = http.value(forHTTPHeaderField: "Content-Length") ?? "?"
+                urlTestStatus = "OK â HTTP \(http.statusCode), size=\(len)"
+                urlTestOK = true
+            } else {
+                urlTestStatus = "HTTP \(http.statusCode)"
+                urlTestOK = false
+            }
+        } catch {
+            urlTestStatus = "Lá»i: \(error.localizedDescription)"
+            urlTestOK = false
+        }
+    }
+
+    private func saveDraft() {
+        let draft = PatchDraft(identifier: identifier.trimmingCharacters(in: .whitespacesAndNewlines), json: generated, savedAt: Date())
+        drafts.removeAll { $0.identifier == draft.identifier }
+        drafts.insert(draft, at: 0)
+        if drafts.count > 20 { drafts = Array(drafts.prefix(20)) }
+        PatchDraft.saveAll(drafts)
+        saved = true
+        copied = false
+    }
+
+    private func loadDraft(_ draft: PatchDraft) {
+        guard let data = draft.json.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+
+        identifier = dict["identifier"] as? String ?? ""
+        name = dict["name"] as? String ?? ""
+        author = dict["author"] as? String ?? ""
+        version = dict["version"] as? String ?? "3105"
+        summary = dict["summary"] as? String ?? ""
+        description = dict["description"] as? String ?? ""
+        category = dict["category"] as? String ?? "Patch"
+        download = dict["download"] as? String ?? ""
+        sha256 = dict["sha256"] as? String ?? ""
+        size = (dict["size"] as? Int).map { "\($0)" } ?? ""
+        icon = dict["icon"] as? String ?? ""
+        patchPath = dict["patchPath"] as? String ?? ""
+        openURL = dict["openURL"] as? String ?? ""
+        if let tagList = dict["tags"] as? [String] {
+            tags = tagList.joined(separator: ", ")
+        }
+        showDrafts = false
+    }
+
+    private func exportJSON() {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(identifier.isEmpty ? "patch" : identifier).json")
+        do {
+            try generated.write(to: tmp, atomically: true, encoding: .utf8)
+            shareURL = tmp
+        } catch {
+            hashError = "KhÃ´ng export ÄÆ°á»£c: \(error.localizedDescription)"
+        }
+    }
+} // ===== Placeholder views (tá»i giáº£n Äá» build pass) =====
+
+struct HomeView: View {
+    @EnvironmentObject var settings: AppSettings
+    @EnvironmentObject var store: RepoStore
+    @EnvironmentObject var session: Session
+    @EnvironmentObject var license: LicenseManager
+    let open: (Route) -> Void
+
+    var body: some View {
+        ZStack {
+            BackgroundView()
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 16) {
+                    HStack {
+                        Image(systemName: "crown.fill").font(.system(size: 28))
+                        Text("SHINN CHEAT").font(.system(size: 27, weight: .black, design: .rounded))
+                        Spacer()
+                    }
+
+                    if let ui = HeroBanner.image {
+                        Image(uiImage: ui).resizable().scaledToFit()
+                            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    }
+
+                    VStack(spacing: 10) {
+                        HStack {
+                            Image(systemName: session.role?.icon ?? "person.fill").font(.title2)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(license.holderName.isEmpty ? (session.role?.title ?? "Member") : license.holderName)
+                                    .font(.headline.bold())
+                                Text(session.role?.title ?? "Member")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "checkmark.seal.fill").foregroundStyle(.green)
+                        }
+                        Divider()
+                        Button {
+                            session.role = nil
+                            license.signOutLicense()
+                        } label: {
+                            Label("Sign out / Change key", systemImage: "rectangle.portrait.and.arrow.right")
+                                .font(.subheadline.bold())
+                                .frame(maxWidth: .infinity).padding(.vertical, 12)
+                                .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding().shinnGlass()
+
+                    if session.role == .owner || session.role == .admin {
+                        NavigationLink { OwnerPanelView() } label: {
+                            HStack {
+                                IconBox(systemName: "crown.fill", size: 44)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Owner Panel").font(.headline.bold())
+                                    Text("Create member keys").font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                            }
+                            .padding(12).shinnGlass()
+                        }
+                        .buttonStyle(.plain)
+
+                        NavigationLink { RepositoryManagerView() } label: {
+                            HStack {
+                                IconBox(systemName: "folder.badge.gearshape", size: 44)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Repository Manager").font(.headline.bold())
+                                    Text("Manage repos & keys").font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                            }
+                            .padding(12).shinnGlass()
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Button {
+                        open(.packages(nil))
+                    } label: {
+                        HStack {
+                            IconBox(systemName: "shippingbox.fill", size: 44)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Packages").font(.headline.bold())
+                                Text("\(store.packages.count) available").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                        }
+                        .padding(12).shinnGlass()
+                    }
+                    .buttonStyle(.plain)
+
+                    HStack(spacing: 12) {
+                        QuickAction(title: "Settings", subtitle: "Customize", icon: "gearshape.fill") { open(.settings) }
+                        QuickAction(title: "About", subtitle: "Info", icon: "info.circle.fill") { open(.about) }
+                    }
+                }
+                .padding(.horizontal, 18).padding(.top, 10).padding(.bottom, 28)
+            }
+            .refreshable { await store.refresh() }
+        }
+        .toolbar(.hidden, for: .navigationBar)
+    }
+}
+
+struct QuickAction: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 12) {
+                Image(systemName: icon).font(.title2)
+                Text(title).font(.headline.bold())
+                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(18).contentShape(Rectangle()).shinnGlass()
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+enum HeroBanner {
+    static let image: UIImage? = {
+        let names: [(String, String)] = [
+            ("IMG_1253", "jpeg"), ("IMG_1253", "jpg"), ("IMG_1253", "JPG"), ("IMG_1253", "JPEG"), ("HeroBanner", "jpg")
+        ]
+        for (name, ext) in names {
+            if let path = Bundle.main.path(forResource: name, ofType: ext),
+               let img = UIImage(contentsOfFile: path) { return img }
+        }
+        return nil
+    }()
+}
+
+struct PackagesView: View {
+    @EnvironmentObject var settings: AppSettings
+    @EnvironmentObject var store: RepoStore
+    @State private var searchText = ""
+    @State private var category: String?
+
+    init(initialCategory: String?) {
+        _category = State(initialValue: initialCategory)
+    }
+
+    private var filtered: [RepoPackage] {
+        var result = store.packages
+        if let category { result = result.filter { $0.category == category } }
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !q.isEmpty {
+            result = result.filter {
+                $0.name.localizedCaseInsensitiveContains(q) ||
+                ($0.summary ?? "").localizedCaseInsensitiveContains(q)
+            }
+        }
+        return result
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 12) {
+                if store.packages.isEmpty {
+                    ProgressView().padding(.top, 40)
+                } else if filtered.isEmpty {
+                    Text("No results").font(.headline).padding(.top, 40)
+                } else {
+                    ForEach(filtered) { package in
+                        NavigationLink(value: Route.detail(package.id)) {
+                            PackageRow(pkg: package)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(.horizontal, 18).padding(.vertical, 12)
+        }
+        .background(BackgroundView())
+        .navigationTitle("Packages")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchText, prompt: "Search packages")
+        .refreshable { await store.refresh() }
+    }
+}
+
+struct PackageRow: View {
+    let pkg: RepoPackage
+    private func tag(_ text: String) -> some View {
+        Text(text).font(.caption2.weight(.medium))
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background(Color.primary.opacity(0.08), in: Capsule())
+    }
+    var body: some View {
+        HStack(spacing: 14) {
+            IconBox(systemName: categoryIcon(pkg.category ?? ""), size: 50)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(pkg.name).font(.system(size: 16, weight: .semibold, design: .rounded)).lineLimit(1)
+                Text(pkg.summary ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                HStack(spacing: 6) {
+                    if let version = pkg.version { tag("v\(version)") }
+                    if let size = pkg.size { tag(formatBytes(size)) }
+                }
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right").font(.footnote.bold()).foregroundStyle(.secondary)
+        }
+        .padding(12).contentShape(Rectangle()).shinnGlass(radius: 20)
+    }
+}
+
+struct PackageDetailView: View {
+    @EnvironmentObject var store: RepoStore
+    @EnvironmentObject var abuse: AbuseGuard
+    let packageID: String
+    @State private var patchOn = false
+    @State private var alertTitle = ""
+    @State private var alertMessage = ""
+    @State private var showAlert = false
+
+    private var pkg: RepoPackage? {
+        store.packages.first { $0.id == packageID }
+    }
+
+    var body: some View {
+        ZStack {
+            BackgroundView()
+            if let pkg { content(pkg) } else { ProgressView() }
+        }
+        .navigationTitle(pkg?.name ?? "")
+        .navigationBarTitleDisplayMode(.inline)
+        .alert(alertTitle, isPresented: $showAlert) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(alertMessage) }
+    }
+
+    private func content(_ pkg: RepoPackage) -> some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                Text(pkg.name).font(.system(size: 26, weight: .bold, design: .rounded))
+                if let summary = pkg.summary {
+                    Text(summary).font(.subheadline).foregroundStyle(.secondary)
+                }
+                VStack(spacing: 0) {
+                    infoRow("Version", pkg.version ?? "-")
+                    infoRow("Author", pkg.author ?? "-")
+                    infoRow("Category", pkg.category ?? "-")
+                    infoRow("Size", pkg.size.map { formatBytes($0) } ?? "-")
+                }
+                .padding(.horizontal, 16).shinnGlass()
+                downloadSection(pkg)
+            }
+            .padding(.horizontal, 18).padding(.vertical, 16)
+        }
+    }
+
+    private func infoRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label).foregroundStyle(.secondary)
+            Spacer()
+            Text(value).fontWeight(.medium)
+        }
+        .font(.subheadline).padding(.vertical, 13)
+    }
+
+    private func mainButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .frame(maxWidth: .infinity).padding(.vertical, 15)
+                .background(Color.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .foregroundStyle(Color(.systemBackground))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func downloadSection(_ pkg: RepoPackage) -> some View {
+        VStack(spacing: 12) {
+            switch store.state(for: pkg) {
+            case .idle:
+                mainButton("Download", icon: "arrow.down.circle.fill") {
+                    Task { await store.download(pkg) }
+                }
+            case .downloading:
+                HStack(spacing: 10) { ProgressView(); Text("Downloadingâ¦") }
+                    .frame(maxWidth: .infinity).padding(.vertical, 15).shinnGlass(radius: 16)
+            case .done:
+                Toggle(isOn: Binding(
+                    get: {
+                        if case .applied = store.patchState(for: pkg) { return true }
+                        return patchOn
+                    },
+                    set: { on in
+                        patchOn = on
+                        abuse.patchToggled()
+                        Task {
+                            if on {
+                                await store.apply(pkg)
+                                switch store.patchState(for: pkg) {
+                                case .applied:
+                                    alertTitle = "On"; alertMessage = "Patch enabled."
+                                case .failed(let m):
+                                    patchOn = false; alertTitle = "Failed"; alertMessage = m
+                                default:
+                                    alertTitle = "On"; alertMessage = "Patch enabled."
+                                }
+                            } else {
+                                await store.restore(pkg)
+                                alertTitle = "Off"; alertMessage = "Patch restored."
+                            }
+                            showAlert = true
+                        }
+                    }
+                )) {
+                    Text("Patch").font(.headline)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12).shinnGlass(radius: 16)
+            case .failed(let error):
+                Text(String(describing: error)).font(.subheadline).foregroundStyle(.red)
+                mainButton("Retry", icon: "arrow.clockwise") {
+                    Task { await store.download(pkg) }
+                }
+            }
+        }
+    }
+}
+
+
+func iconForBundleID(_ bundleID: String) -> UIImage? {
+    nil
+}
+
+struct ShinnDocumentPicker: UIViewControllerRepresentable {
+    var allowsMultipleSelection = false
+    var onSelection: (Result<[URL], Error>) -> Void
+    var onCancel: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.data, .item], asCopy: true)
+        picker.allowsMultipleSelection = allowsMultipleSelection
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let parent: ShinnDocumentPicker
+        init(_ parent: ShinnDocumentPicker) { self.parent = parent }
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            parent.onSelection(.success(urls))
+        }
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            parent.onCancel()
+        }
+    }
+}
