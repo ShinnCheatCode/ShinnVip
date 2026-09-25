@@ -1,4 +1,6 @@
-name: Build Shinn
+# FILE: .github/workflows/build.yml
+
+name: Build Shinn IPA
 
 on:
   push:
@@ -13,108 +15,174 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          clean: true
+          fetch-depth: 0
+
+      - name: Show repo files
+        run: |
+          ls -lah
+          echo "ZIP LIST:"
+          find . -maxdepth 2 -iname "*.zip" -print
+
+      - name: Extract shinn.zip
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ZIP=$(find . -maxdepth 2 \( -iname "shinn.zip" -o -iname "Shinn.zip" \) | head -1)
+
+          if [ -z "${ZIP:-}" ]; then
+            echo "❌ Không tìm thấy shinn.zip ở root repo"
+            echo "Hãy commit file shinn.zip vào thư mục gốc repo."
+            exit 1
+          fi
+
+          echo "Found zip: $ZIP"
+
+          SRC="$RUNNER_TEMP/source"
+          rm -rf "$SRC"
+          mkdir -p "$SRC"
+          unzip -q -o "$ZIP" -d "$SRC"
+
+          echo "SOURCE TREE (maxdepth 4):"
+          find "$SRC" -maxdepth 4 | head -200
+
+          WORKSPACE=$(find "$SRC" -name "*.xcworkspace" ! -path "*.xcodeproj/*" | head -1 || true)
+          PROJECT=$(find "$SRC" -name "*.xcodeproj" | head -1 || true)
+
+          if [ -z "${PROJECT:-}" ] && [ -z "${WORKSPACE:-}" ]; then
+            echo "❌ Không tìm thấy .xcodeproj hoặc .xcworkspace trong shinn.zip"
+            exit 1
+          fi
+
+          if [ -n "${WORKSPACE:-}" ]; then
+            ROOT=$(dirname "$WORKSPACE")
+            echo "USE_WORKSPACE=1" >> "$GITHUB_ENV"
+            echo "WORKSPACE=$WORKSPACE" >> "$GITHUB_ENV"
+            echo "PROJECT=${PROJECT:-}" >> "$GITHUB_ENV"
+          else
+            ROOT=$(dirname "$PROJECT")
+            echo "USE_WORKSPACE=0" >> "$GITHUB_ENV"
+            echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
+          fi
+
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+          echo "Root: $ROOT"
+          echo "Workspace: ${WORKSPACE:-none}"
+          echo "Project: ${PROJECT:-none}"
 
       - name: Select Xcode
         run: |
           sudo xcode-select -s /Applications/Xcode.app
           xcodebuild -version
 
-      - name: Unzip if needed
-        run: |
-          set -euo pipefail
-          mkdir -p src
-          if ls *.zip >/dev/null 2>&1; then
-            echo "Found zip, extracting..."
-            unzip -o "*.zip" -d src
-          else
-            echo "No zip, use repo root"
-            # copy everything except .git into src
-            rsync -a --exclude '.git' --exclude 'src' ./ src/
-          fi
-          echo "---- tree ----"
-          find src -maxdepth 3 \( -name "*.xcodeproj" -o -name "*.xcworkspace" -o -type d \) | head -80
+      - name: Clean DerivedData
+        run: rm -rf ~/Library/Developer/Xcode/DerivedData/*
 
-      - name: Find project
-        id: proj
+      - name: Detect scheme
+        shell: bash
         run: |
           set -euo pipefail
-          PROJECT=$(find src -name "*.xcodeproj" -not -path "*/.git/*" | head -n 1)
-          WORKSPACE=$(find src -name "*.xcworkspace" -not -path "*/.git/*" -not -path "*.xcodeproj/*" | head -n 1)
-          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
-          echo "workspace=$WORKSPACE" >> "$GITHUB_OUTPUT"
-          echo "PROJECT=$PROJECT"
-          echo "WORKSPACE=$WORKSPACE"
-          if [ -z "$PROJECT" ] && [ -z "$WORKSPACE" ]; then
-            echo "::error::Không thấy .xcodeproj trong repo/zip"
-            ls -la .
-            ls -la src || true
-            find src | head -80
+          cd "$ROOT"
+
+          if [ "${USE_WORKSPACE}" = "1" ]; then
+            LIST=$(xcodebuild -list -workspace "$(basename "$WORKSPACE")")
+          else
+            LIST=$(xcodebuild -list -project "$(basename "$PROJECT")")
+          fi
+
+          echo "$LIST"
+
+          SCHEME=$(echo "$LIST" | awk '
+            /Schemes:/ {s=1; next}
+            s && NF {gsub(/^[ \t]+|[ \t]+$/, "", $0); print; exit}
+          ')
+
+          PREFERRED=$(echo "$LIST" | awk '
+            /Schemes:/ {s=1; next}
+            s && NF {
+              gsub(/^[ \t]+|[ \t]+$/, "", $0)
+              if (tolower($0) ~ /shinn/ || $0 == "3105") { print; exit }
+            }
+          ')
+
+          if [ -n "${PREFERRED:-}" ]; then
+            SCHEME="$PREFERRED"
+          fi
+
+          if [ -z "${SCHEME:-}" ]; then
+            echo "❌ Không detect được scheme"
             exit 1
           fi
 
-      - name: Resolve scheme
-        id: scheme
-        run: |
-          set -euo pipefail
-          if [ -n "${{ steps.proj.outputs.workspace }}" ]; then
-            LIST=$(xcodebuild -list -workspace "${{ steps.proj.outputs.workspace }}")
-          else
-            LIST=$(xcodebuild -list -project "${{ steps.proj.outputs.project }}")
-          fi
-          echo "$LIST"
-          SCHEME=$(echo "$LIST" | awk '/Schemes:/{f=1;next} f&&NF{gsub(/\r/,""); print $1; exit}')
-          if [ -z "$SCHEME" ]; then
-            SCHEME="ThreeOneOSFive"
-          fi
-          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
-          echo "SCHEME=$SCHEME"
+          echo "SCHEME=$SCHEME" >> "$GITHUB_ENV"
+          echo "Detected scheme: $SCHEME"
 
-      - name: Build
+      - name: Archive unsigned
+        shell: bash
         run: |
           set -euo pipefail
-          mkdir -p derived
+          cd "$ROOT"
+
+          ARCHIVE="$RUNNER_TEMP/Shinn.xcarchive"
+          rm -rf "$ARCHIVE"
+
           COMMON=(
-            -scheme "${{ steps.scheme.outputs.scheme }}"
+            -scheme "$SCHEME"
             -configuration Release
             -destination "generic/platform=iOS"
-            -derivedDataPath "$GITHUB_WORKSPACE/derived"
-            CODE_SIGNING_ALLOWED=NO
-            CODE_SIGNING_REQUIRED=NO
+            -archivePath "$ARCHIVE"
             CODE_SIGN_IDENTITY=""
+            CODE_SIGNING_REQUIRED=NO
+            CODE_SIGNING_ALLOWED=NO
             DEVELOPMENT_TEAM=""
-            ONLY_ACTIVE_ARCH=NO
+            -allowProvisioningUpdates=NO
           )
-          if [ -n "${{ steps.proj.outputs.workspace }}" ]; then
-            xcodebuild -workspace "${{ steps.proj.outputs.workspace }}" "${COMMON[@]}" build
+
+          if [ "${USE_WORKSPACE}" = "1" ]; then
+            xcodebuild archive -workspace "$(basename "$WORKSPACE")" "${COMMON[@]}" | tee "$RUNNER_TEMP/build.log"
           else
-            xcodebuild -project "${{ steps.proj.outputs.project }}" "${COMMON[@]}" build
+            xcodebuild archive -project "$(basename "$PROJECT")" "${COMMON[@]}" | tee "$RUNNER_TEMP/build.log"
           fi
 
-      - name: Package IPA + shinn.zip
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Package IPA
+        shell: bash
         run: |
           set -euo pipefail
-          APP=$(find derived -name "*.app" -path "*Release-iphoneos*" | head -n 1)
-          if [ -z "$APP" ]; then
-            APP=$(find derived -name "*.app" | head -n 1)
-          fi
-          if [ -z "$APP" ]; then
-            echo "::error::Build xong không thấy file .app"
-            find derived -name "*.app" -o -name "*.ipa" | head
+
+          APP=$(find "$ARCHIVE/Products/Applications" -name "*.app" | head -1)
+          if [ -z "${APP:-}" ]; then
+            echo "❌ Không tìm thấy .app trong archive"
+            find "$ARCHIVE" | head -100
             exit 1
           fi
-          echo "APP=$APP"
-          rm -rf Payload dist
-          mkdir -p Payload dist
-          cp -R "$APP" Payload/
-          (cd "$GITHUB_WORKSPACE" && zip -r dist/Shinn.ipa Payload)
-          cp dist/Shinn.ipa dist/shinn.zip
-          ls -lh dist
 
-      - name: Upload artifacts
+          echo "APP=$APP"
+          ls -lah "$APP"
+
+          PKG="$RUNNER_TEMP/ipa"
+          rm -rf "$PKG"
+          mkdir -p "$PKG/Payload"
+          cp -R "$APP" "$PKG/Payload/"
+
+          cd "$PKG"
+          zip -qry "$GITHUB_WORKSPACE/Shinn.ipa" Payload
+          ls -lah "$GITHUB_WORKSPACE/Shinn.ipa"
+
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: shinn
-          path: |
-            dist/shinn.zip
-            dist/Shinn.ipa
+          name: Shinn-IPA
+          path: Shinn.ipa
           if-no-files-found: error
+
+      - name: Upload Build Log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Build-Log
+          path: ${{ runner.temp }}/build.log
+          if-no-files-found: ignore
