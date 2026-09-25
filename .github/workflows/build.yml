@@ -19,22 +19,18 @@ jobs:
           sudo xcode-select -s /Applications/Xcode.app
           xcodebuild -version
 
-      - name: Unzip Source.zip
+      - name: Unzip if needed
         run: |
           set -euo pipefail
           mkdir -p src
-
-          if [ -f "Source.zip" ]; then
-            echo "Found Source.zip, extracting..."
-            unzip -o "Source.zip" -d src
-          elif [ -f "source.zip" ]; then
-            echo "Found source.zip, extracting..."
-            unzip -o "source.zip" -d src
+          if ls *.zip >/dev/null 2>&1; then
+            echo "Found zip, extracting..."
+            unzip -o "*.zip" -d src
           else
-            echo "No Source.zip, use repo root"
+            echo "No zip, use repo root"
+            # copy everything except .git into src
             rsync -a --exclude '.git' --exclude 'src' ./ src/
           fi
-
           echo "---- tree ----"
           find src -maxdepth 3 \( -name "*.xcodeproj" -o -name "*.xcworkspace" -o -type d \) | head -80
 
@@ -94,7 +90,7 @@ jobs:
             xcodebuild -project "${{ steps.proj.outputs.project }}" "${COMMON[@]}" build
           fi
 
-      - name: Package IPA + Source.zip
+      - name: Package IPA + shinn.zip
         run: |
           set -euo pipefail
           APP=$(find derived -name "*.app" -path "*Release-iphoneos*" | head -n 1)
@@ -111,14 +107,14 @@ jobs:
           mkdir -p Payload dist
           cp -R "$APP" Payload/
           (cd "$GITHUB_WORKSPACE" && zip -r dist/Shinn.ipa Payload)
-          cp dist/Shinn.ipa dist/Source.zip
+          cp dist/Shinn.ipa dist/shinn.zip
           ls -lh dist
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Source
+          name: shinn
           path: |
-            dist/Source.zip
+            dist/shinn.zip
             dist/Shinn.ipa
           if-no-files-found: error
