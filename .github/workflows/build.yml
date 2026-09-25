@@ -1,88 +1,297 @@
-name: Build Source
+name: Build Shinn
 
 on:
   push:
     branches:
       - main
       - master
-
   workflow_dispatch:
 
 jobs:
-  build-source:
+  build:
     runs-on: macos-14
-    timeout-minutes: 15
+    timeout-minutes: 60
 
     steps:
       # =========================
-      # CHECKOUT SOURCE
+      # CHECKOUT
       # =========================
       - name: Checkout
         uses: actions/checkout@v4
 
       # =========================
-      # SHOW SOURCE
+      # SELECT XCODE
       # =========================
-      - name: Check source
+      - name: Select Xcode
         run: |
           set -euo pipefail
 
-          echo "===== Repository ====="
-          pwd
+          sudo xcode-select -s /Applications/Xcode.app
 
-          echo "===== Files ====="
-          find . \
-            -not -path './.git/*' \
-            -not -path './dist/*' \
-            -print \
-            | head -200
+          xcodebuild -version
 
       # =========================
-      # CREATE SOURCE.ZIP
+      # UNZIP SOURCE IF NEEDED
       # =========================
-      - name: Build Source.zip
+      - name: Unzip if needed
         run: |
           set -euo pipefail
 
-          rm -rf dist
-          mkdir -p dist
+          rm -rf src
+          mkdir -p src
 
-          echo "Creating Source.zip..."
+          shopt -s nullglob
+          ZIPS=( *.zip )
 
-          zip -r "dist/Source.zip" . \
-            -x ".git/*" \
-            -x ".github/*" \
-            -x "dist/*" \
-            -x "*.DS_Store"
+          if [ ${#ZIPS[@]} -gt 0 ]; then
+            echo "Found ZIP files:"
 
-          echo "===== Source.zip created ====="
-          ls -lh "dist/Source.zip"
+            printf '%s\n' "${ZIPS[@]}"
+
+            for ZIP in "${ZIPS[@]}"; do
+              echo "Extracting $ZIP"
+
+              unzip -o "$ZIP" -d src
+            done
+          else
+            echo "No ZIP found."
+
+            echo "Using repository source."
+
+            rsync -a \
+              --exclude '.git' \
+              --exclude 'src' \
+              --exclude 'derived' \
+              --exclude 'dist' \
+              ./ src/
+          fi
+
+          echo "===== PROJECTS ====="
+
+          find src \
+            \( -name "*.xcodeproj" -o -name "*.xcworkspace" \) \
+            -print
 
       # =========================
-      # VERIFY ZIP
+      # FIND PROJECT
       # =========================
-      - name: Verify Source.zip
+      - name: Find project
+        id: proj
         run: |
           set -euo pipefail
 
-          if [ ! -f "dist/Source.zip" ]; then
-            echo "::error::Không tạo được Source.zip"
+          PROJECT=$(
+            find "$GITHUB_WORKSPACE/src" \
+              -name "*.xcodeproj" \
+              -not -path "*/.git/*" \
+              | head -n 1 || true
+          )
+
+          WORKSPACE=$(
+            find "$GITHUB_WORKSPACE/src" \
+              -name "*.xcworkspace" \
+              -not -path "*/.git/*" \
+              -not -path "*.xcodeproj/*" \
+              | head -n 1 || true
+          )
+
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+          echo "workspace=$WORKSPACE" >> "$GITHUB_OUTPUT"
+
+          echo "PROJECT=$PROJECT"
+          echo "WORKSPACE=$WORKSPACE"
+
+          if [ -z "$PROJECT" ] && [ -z "$WORKSPACE" ]; then
+            echo "::error::Không tìm thấy .xcodeproj hoặc .xcworkspace"
+
+            find src -maxdepth 5 -print | head -200
+
             exit 1
           fi
 
-          echo "===== ZIP CONTENT ====="
-          unzip -l "dist/Source.zip" | head -100
+      # =========================
+      # FIND SCHEME
+      # =========================
+      - name: Resolve scheme
+        id: scheme
+        run: |
+          set -euo pipefail
 
-          echo "===== ZIP SIZE ====="
-          du -h "dist/Source.zip"
+          if [ -n "${{ steps.proj.outputs.workspace }}" ]; then
+
+            LIST=$(
+              xcodebuild \
+                -list \
+                -workspace "${{ steps.proj.outputs.workspace }}"
+            )
+
+          else
+
+            LIST=$(
+              xcodebuild \
+                -list \
+                -project "${{ steps.proj.outputs.project }}"
+            )
+
+          fi
+
+          echo "$LIST"
+
+          SCHEME=$(
+            echo "$LIST" |
+            awk '
+              /Schemes:/ {
+                found=1
+                next
+              }
+
+              found && NF {
+                gsub(/\r/, "")
+                print $1
+                exit
+              }
+            '
+          )
+
+          if [ -z "$SCHEME" ]; then
+            SCHEME="ThreeOneOSFive"
+          fi
+
+          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
+
+          echo "SCHEME=$SCHEME"
 
       # =========================
-      # UPLOAD ARTIFACT
+      # BUILD IPA
       # =========================
-      - name: Upload Source
+      - name: Build IPA
+        run: |
+          set -euo pipefail
+
+          rm -rf derived
+          mkdir -p derived
+
+          COMMON=(
+            -scheme "${{ steps.scheme.outputs.scheme }}"
+            -configuration Release
+            -destination "generic/platform=iOS"
+            -derivedDataPath "$GITHUB_WORKSPACE/derived"
+
+            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_REQUIRED=NO
+            CODE_SIGN_IDENTITY=""
+            DEVELOPMENT_TEAM=""
+
+            ONLY_ACTIVE_ARCH=NO
+          )
+
+          if [ -n "${{ steps.proj.outputs.workspace }}" ]; then
+
+            xcodebuild \
+              -workspace "${{ steps.proj.outputs.workspace }}" \
+              "${COMMON[@]}" \
+              build
+
+          else
+
+            xcodebuild \
+              -project "${{ steps.proj.outputs.project }}" \
+              "${COMMON[@]}" \
+              build
+
+          fi
+
+      # =========================
+      # PACKAGE IPA
+      # =========================
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+
+          APP=$(
+            find derived \
+              -name "*.app" \
+              -path "*Release-iphoneos*" \
+              | head -n 1 || true
+          )
+
+          if [ -z "$APP" ]; then
+
+            APP=$(
+              find derived \
+                -name "*.app" \
+                | head -n 1 || true
+            )
+
+          fi
+
+          if [ -z "$APP" ]; then
+            echo "::error::Không tìm thấy .app sau khi build"
+
+            find derived \
+              \( -name "*.app" -o -name "*.ipa" \) \
+              -print
+
+            exit 1
+          fi
+
+          echo "APP=$APP"
+
+          rm -rf Payload dist
+
+          mkdir -p Payload dist
+
+          cp -R "$APP" Payload/
+
+          cd "$GITHUB_WORKSPACE"
+
+          zip -r "dist/Shinn.ipa" Payload
+
+          echo "===== IPA ====="
+
+          ls -lh "dist/Shinn.ipa"
+
+      # =========================
+      # ĐỔI IPA -> SOURCE.ZIP
+      # =========================
+      - name: Create Source.zip
+        run: |
+          set -euo pipefail
+
+          rm -f "dist/Source.zip"
+
+          cp "dist/Shinn.ipa" "dist/Source.zip"
+
+          echo "===== Source.zip ====="
+
+          ls -lh "dist/Source.zip"
+
+      # =========================
+      # VERIFY
+      # =========================
+      - name: Verify output
+        run: |
+          set -euo pipefail
+
+          test -f "dist/Shinn.ipa"
+          test -f "dist/Source.zip"
+
+          echo "Build thành công."
+
+          echo "IPA:"
+          ls -lh "dist/Shinn.ipa"
+
+          echo "Source.zip:"
+          ls -lh "dist/Source.zip"
+
+      # =========================
+      # UPLOAD
+      # =========================
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: Source
-          path: dist/Source.zip
+          path: |
+            dist/Source.zip
           if-no-files-found: error
           retention-days: 7
