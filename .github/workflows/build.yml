@@ -78,24 +78,24 @@ jobs:
 
           if [ ! -f "Source.zip" ]; then
             echo "❌ Không tìm thấy Source.zip"
-
             echo ""
-            echo "Các file hiện có:"
+            echo "Files:"
             find . -maxdepth 4 -type f -print
-
             exit 1
           fi
 
-          echo "✅ Tìm thấy Source.zip"
+          echo "✅ Source.zip tồn tại"
 
+          echo ""
+          echo "File:"
           ls -lh Source.zip
 
           echo ""
-          echo "SHA256 Source.zip:"
+          echo "SHA256:"
           shasum -a 256 Source.zip
 
           echo ""
-          echo "File type:"
+          echo "Type:"
           file Source.zip
 
       # ============================================================
@@ -119,8 +119,18 @@ jobs:
           echo "✅ Giải nén thành công"
 
           echo ""
-          echo "Source files:"
-          find source -maxdepth 6 -type f | sort | head -500
+          echo "Xcode projects:"
+          find source \
+            -type d \
+            -name "*.xcodeproj" \
+            -print
+
+          echo ""
+          echo "Xcode workspaces:"
+          find source \
+            -type d \
+            -name "*.xcworkspace" \
+            -print
 
       # ============================================================
       # VERIFY SOURCE
@@ -162,15 +172,14 @@ jobs:
           fi
 
           echo "$YUNA_FILES"
-
-          echo "✅ YunaSpeech.swift tồn tại."
+          echo "✅ YunaSpeech.swift tồn tại"
 
           # --------------------------------------------------------
-          # Old telegramURL
+          # telegramURL
           # --------------------------------------------------------
 
           echo ""
-          echo "Checking old telegramURL..."
+          echo "Checking telegramURL..."
 
           if grep -RIn \
             --include="*.swift" \
@@ -178,20 +187,18 @@ jobs:
             source 2>/dev/null; then
 
             echo ""
-            echo "❌ Source vẫn còn telegramURL."
-            echo "❌ Kiểm tra lại Source.zip."
-
+            echo "❌ Source vẫn chứa telegramURL"
             exit 1
           fi
 
-          echo "✅ Không còn telegramURL trong Swift."
+          echo "✅ Không còn telegramURL"
 
           # --------------------------------------------------------
-          # Unsafe URL force unwrap
+          # URL force unwrap
           # --------------------------------------------------------
 
           echo ""
-          echo "Checking URL(string:) force unwrap..."
+          echo "Checking unsafe URL(string:)!..."
 
           if grep -RIn \
             --include="*.swift" \
@@ -199,10 +206,10 @@ jobs:
             source 2>/dev/null; then
 
             echo ""
-            echo "⚠️ Phát hiện URL(string:)! trong Swift."
-            echo "Kiểm tra các dòng trên."
+            echo "⚠️ Có URL(string:)! trong source."
+            echo "Các dòng trên cần kiểm tra."
           else
-            echo "✅ Không phát hiện URL(string:)!."
+            echo "✅ Không phát hiện URL(string:)!"
           fi
 
       # ============================================================
@@ -219,17 +226,34 @@ jobs:
           echo "        FIND XCODE PROJECT"
           echo "========================================"
 
-          WORKSPACE=$(find source \
-            -type d \
-            -name "*.xcworkspace" \
-            -not -path "*/Pods/*" \
-            -print -quit)
+          # Ưu tiên project của app
+          PROJECT=$(
+            find source \
+              -type d \
+              -name "ThreeOneOSFive.xcodeproj" \
+              -not -path "*/Pods/*" \
+              -print -quit
+          )
 
-          PROJECT=$(find source \
-            -type d \
-            -name "*.xcodeproj" \
-            -not -path "*/Pods/*" \
-            -print -quit)
+          # Fallback
+          if [ -z "$PROJECT" ]; then
+            PROJECT=$(
+              find source \
+                -type d \
+                -name "*.xcodeproj" \
+                -not -path "*/Pods/*" \
+                -print -quit
+            )
+          fi
+
+          # Tìm workspace nếu có
+          WORKSPACE=$(
+            find source \
+              -type d \
+              -name "*.xcworkspace" \
+              -not -path "*/Pods/*" \
+              -print -quit
+          )
 
           if [ -n "$WORKSPACE" ]; then
 
@@ -249,12 +273,11 @@ jobs:
 
           else
 
-            echo "❌ Không tìm thấy Xcode project."
+            echo "❌ Không tìm thấy .xcodeproj hoặc .xcworkspace"
 
             find source -maxdepth 8 -print
 
             exit 1
-
           fi
 
       # ============================================================
@@ -264,6 +287,8 @@ jobs:
       - name: Xcode information
         shell: bash
         run: |
+          set -e
+
           echo "========================================"
           echo "        XCODE INFORMATION"
           echo "========================================"
@@ -271,7 +296,7 @@ jobs:
           xcodebuild -version
 
           echo ""
-          echo "Xcode path:"
+          echo "Developer directory:"
           xcode-select -p
 
           echo ""
@@ -279,13 +304,13 @@ jobs:
           sw_vers
 
       # ============================================================
-      # LIST PROJECT / SCHEMES
+      # LIST SCHEMES
       # ============================================================
 
       - name: List schemes
         shell: bash
         run: |
-          set +e
+          set -e
 
           echo "========================================"
           echo "        AVAILABLE SCHEMES"
@@ -306,149 +331,31 @@ jobs:
           fi
 
       # ============================================================
-      # DETECT VALID SCHEME
+      # SET SCHEME
       # ============================================================
 
-      - name: Detect valid scheme
+      - name: Set scheme
         id: scheme
         shell: bash
         run: |
           set -e
 
           echo "========================================"
-          echo "        DETECT VALID SCHEME"
+          echo "        SET BUILD SCHEME"
           echo "========================================"
 
-          if [ -n "${{ steps.xcode.outputs.workspace }}" ]; then
+          # Xcode project:
+          # ThreeOneOSFive.xcodeproj
+          #
+          # Target:
+          # 3105
+          #
+          # Scheme:
+          # 3105
 
-            LIST_OUTPUT=$(
-              xcodebuild \
-                -workspace "${{ steps.xcode.outputs.workspace }}" \
-                -list
-            )
+          SCHEME="3105"
 
-          else
-
-            LIST_OUTPUT=$(
-              xcodebuild \
-                -project "${{ steps.xcode.outputs.project }}" \
-                -list
-            )
-
-          fi
-
-          echo ""
-          echo "Full Xcode list:"
-          echo "$LIST_OUTPUT"
-
-          echo ""
-          echo "========================================"
-          echo "        AVAILABLE SCHEMES"
-          echo "========================================"
-
-          echo "$LIST_OUTPUT" |
-            sed -n '/Schemes:/,$p'
-
-          # --------------------------------------------------------
-          # Extract scheme
-          # --------------------------------------------------------
-
-          SCHEME=$(
-            echo "$LIST_OUTPUT" |
-            awk '
-              /^Schemes:/ {
-                getline
-
-                gsub(/^[[:space:]]+/, "")
-                gsub(/[[:space:]]+$/, "")
-
-                if ($0 != "") {
-                  print
-                  exit
-                }
-              }
-            '
-          )
-
-          # --------------------------------------------------------
-          # Fallback: find target
-          # --------------------------------------------------------
-
-          if [ -z "$SCHEME" ]; then
-
-            echo ""
-            echo "⚠️ Không lấy được Scheme trực tiếp."
-            echo "Đang thử lấy Target..."
-
-            TARGET=$(
-              echo "$LIST_OUTPUT" |
-              awk '
-                /^Targets:/ {
-                  getline
-
-                  gsub(/^[[:space:]]+/, "")
-                  gsub(/[[:space:]]+$/, "")
-
-                  if ($0 != "") {
-                    print
-                    exit
-                  }
-                }
-              '
-            )
-
-            if [ -n "$TARGET" ]; then
-              SCHEME="$TARGET"
-            fi
-
-          fi
-
-          # --------------------------------------------------------
-          # Final check
-          # --------------------------------------------------------
-
-          if [ -z "$SCHEME" ]; then
-
-            echo ""
-            echo "❌ Không tìm thấy Scheme."
-
-            echo ""
-            echo "Xcode output:"
-            echo "$LIST_OUTPUT"
-
-            exit 1
-
-          fi
-
-          echo ""
-          echo "========================================"
-          echo "        SELECTED SCHEME"
-          echo "========================================"
-
-          echo "Scheme: [$SCHEME]"
-
-          echo ""
-          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
-
-          echo "✅ Scheme hợp lệ."
-
-      # ============================================================
-      # VERIFY SCHEME
-      # ============================================================
-
-      - name: Verify scheme
-        shell: bash
-        run: |
-          set -e
-
-          echo "========================================"
-          echo "        VERIFY SCHEME"
-          echo "========================================"
-
-          SCHEME="${{ steps.scheme.outputs.scheme }}"
-
-          echo "Scheme:"
-          echo "$SCHEME"
+          echo "Scheme: $SCHEME"
 
           if [ -n "${{ steps.xcode.outputs.workspace }}" ]; then
 
@@ -468,18 +375,26 @@ jobs:
 
           fi
 
-          echo "✅ Scheme hợp lệ."
+          echo ""
+          echo "========================================"
+          echo "        SCHEME VERIFIED"
+          echo "========================================"
+
+          echo "✅ Scheme [$SCHEME] hợp lệ"
 
           echo ""
-          echo "Important build settings:"
+          echo "Build settings:"
 
           grep -E \
             "TARGET_NAME|PRODUCT_BUNDLE_IDENTIFIER|PRODUCT_NAME|INFOPLIST_FILE|SWIFT_VERSION" \
             /tmp/build-settings.txt \
             | head -100 || true
 
+          echo ""
+          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
+
       # ============================================================
-      # CLEAN
+      # CLEAN BUILD
       # ============================================================
 
       - name: Clean build
@@ -496,6 +411,8 @@ jobs:
 
           mkdir -p build
 
+          echo "✅ Build directory cleaned"
+
       # ============================================================
       # BUILD ARCHIVE
       # ============================================================
@@ -511,8 +428,20 @@ jobs:
 
           SCHEME="${{ steps.scheme.outputs.scheme }}"
 
+          echo "Project:"
+          echo "${{ steps.xcode.outputs.project }}"
+
+          echo ""
           echo "Scheme:"
           echo "$SCHEME"
+
+          echo ""
+          echo "Configuration:"
+          echo "Release"
+
+          echo ""
+          echo "SDK:"
+          echo "iphoneos"
 
           if [ -n "${{ steps.xcode.outputs.workspace }}" ]; then
 
@@ -561,25 +490,25 @@ jobs:
 
           if [ ! -d "build/App.xcarchive" ]; then
 
-            echo "❌ Archive không được tạo."
+            echo "❌ Archive không được tạo"
 
             echo ""
+            echo "Build log:"
             cat build.log || true
 
             exit 1
           fi
 
-          echo "✅ Archive đã được tạo."
+          echo "✅ Archive được tạo thành công"
 
           echo ""
-          echo "Built applications:"
+          echo "Archive contents:"
 
           find \
-            build/App.xcarchive/Products \
-            -maxdepth 3 \
-            -type d \
-            -name "*.app" \
-            -print
+            build/App.xcarchive \
+            -maxdepth 5 \
+            -print \
+            | head -300
 
       # ============================================================
       # FIND BUILT APP
@@ -606,7 +535,7 @@ jobs:
 
           if [ -z "$APP" ]; then
 
-            echo "❌ Không tìm thấy .app."
+            echo "❌ Không tìm thấy .app"
 
             find \
               build/App.xcarchive \
@@ -618,6 +547,7 @@ jobs:
 
           echo "app=$APP" >> "$GITHUB_OUTPUT"
 
+          echo ""
           echo "✅ APP:"
           echo "$APP"
 
@@ -636,25 +566,40 @@ jobs:
 
           APP="${{ steps.app.outputs.app }}"
 
+          echo "App:"
+          echo "$APP"
+
+          echo ""
           echo "Bundle Identifier:"
+
           /usr/libexec/PlistBuddy \
             -c "Print :CFBundleIdentifier" \
             "$APP/Info.plist" || true
 
           echo ""
+          echo "Display Name:"
+
+          /usr/libexec/PlistBuddy \
+            -c "Print :CFBundleDisplayName" \
+            "$APP/Info.plist" || true
+
+          echo ""
           echo "Version:"
+
           /usr/libexec/PlistBuddy \
             -c "Print :CFBundleShortVersionString" \
             "$APP/Info.plist" || true
 
           echo ""
           echo "Build:"
+
           /usr/libexec/PlistBuddy \
             -c "Print :CFBundleVersion" \
             "$APP/Info.plist" || true
 
           echo ""
           echo "Executable:"
+
           /usr/libexec/PlistBuddy \
             -c "Print :CFBundleExecutable" \
             "$APP/Info.plist" || true
@@ -683,20 +628,26 @@ jobs:
           BINARY="$APP/$EXECUTABLE"
 
           if [ ! -f "$BINARY" ]; then
+
             echo "❌ Không tìm thấy executable:"
             echo "$BINARY"
+
             exit 1
           fi
 
-          echo "Binary:"
+          echo "Executable:"
           echo "$BINARY"
+
+          echo ""
+          echo "Binary size:"
+          ls -lh "$BINARY"
 
           echo ""
           echo "Binary SHA256:"
           shasum -a 256 "$BINARY"
 
           # --------------------------------------------------------
-          # Check old crash symbol
+          # Check telegramURL
           # --------------------------------------------------------
 
           echo ""
@@ -707,18 +658,19 @@ jobs:
             "telegramURL|one-time initialization function for telegramURL"; then
 
             echo ""
-            echo "❌❌❌ PHÁT HIỆN telegramURL TRONG BINARY ❌❌❌"
+            echo "❌ PHÁT HIỆN telegramURL TRONG BINARY"
             echo ""
             echo "Binary vẫn chứa code cũ."
-            echo "IPA sẽ KHÔNG được tạo."
-
             exit 1
+
+          else
+
+            echo "✅ Không có telegramURL trong binary"
+
           fi
 
-          echo "✅ Không có telegramURL trong binary."
-
           # --------------------------------------------------------
-          # Check Yuna
+          # Check YunaSpeech
           # --------------------------------------------------------
 
           echo ""
@@ -727,11 +679,12 @@ jobs:
           if strings "$BINARY" |
             grep -q "YunaSpeech"; then
 
-            echo "✅ YunaSpeech được tìm thấy trong binary."
+            echo "✅ YunaSpeech có trong binary"
 
           else
 
-            echo "⚠️ Không tìm thấy symbol YunaSpeech."
+            echo "⚠️ Không tìm thấy symbol YunaSpeech"
+            echo "Không dừng build."
 
           fi
 
@@ -750,19 +703,23 @@ jobs:
 
           APP="${{ steps.app.outputs.app }}"
 
+          echo ""
           echo "Microphone:"
+
           /usr/libexec/PlistBuddy \
             -c "Print :NSMicrophoneUsageDescription" \
             "$APP/Info.plist" || true
 
           echo ""
           echo "Speech Recognition:"
+
           /usr/libexec/PlistBuddy \
             -c "Print :NSSpeechRecognitionUsageDescription" \
             "$APP/Info.plist" || true
 
           echo ""
           echo "Face ID:"
+
           /usr/libexec/PlistBuddy \
             -c "Print :NSFaceIDUsageDescription" \
             "$APP/Info.plist" || true
@@ -788,7 +745,14 @@ jobs:
             "${{ steps.app.outputs.app }}" \
             ipa/Payload/
 
-          echo "✅ Payload created."
+          echo "✅ Payload created"
+
+          echo ""
+          echo "Payload:"
+
+          find ipa/Payload \
+            -maxdepth 2 \
+            -print
 
       # ============================================================
       # CREATE IPA
@@ -813,12 +777,15 @@ jobs:
 
           if [ ! -f "ShinnCheat-unsigned.ipa" ]; then
 
-            echo "❌ Không tạo được IPA."
+            echo "❌ Không tạo được IPA"
 
             exit 1
           fi
 
           echo "✅ IPA CREATED"
+
+          echo ""
+          echo "IPA information:"
 
           ls -lh \
             ShinnCheat-unsigned.ipa
@@ -828,6 +795,59 @@ jobs:
 
           shasum -a 256 \
             ShinnCheat-unsigned.ipa
+
+      # ============================================================
+      # VERIFY IPA
+      # ============================================================
+
+      - name: Verify IPA
+        shell: bash
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "        VERIFY IPA"
+          echo "========================================"
+
+          if [ ! -f "ShinnCheat-unsigned.ipa" ]; then
+            echo "❌ IPA không tồn tại"
+            exit 1
+          fi
+
+          rm -rf /tmp/ipa_verify
+          mkdir -p /tmp/ipa_verify
+
+          unzip -q \
+            ShinnCheat-unsigned.ipa \
+            -d /tmp/ipa_verify
+
+          APP_COUNT=$(
+            find /tmp/ipa_verify/Payload \
+              -maxdepth 1 \
+              -type d \
+              -name "*.app" \
+              | wc -l
+          )
+
+          if [ "$APP_COUNT" -ne 1 ]; then
+
+            echo "❌ IPA không chứa đúng 1 .app"
+
+            find /tmp/ipa_verify \
+              -maxdepth 3 \
+              -print
+
+            exit 1
+          fi
+
+          echo "✅ IPA structure hợp lệ"
+
+          echo ""
+          echo "Contents:"
+
+          find /tmp/ipa_verify/Payload \
+            -maxdepth 2 \
+            -print
 
       # ============================================================
       # UPLOAD IPA
@@ -841,7 +861,7 @@ jobs:
           if-no-files-found: error
 
       # ============================================================
-      # UPLOAD XCARCHIVE
+      # UPLOAD XCODE ARCHIVE
       # ============================================================
 
       - name: Upload Xcode Archive
@@ -862,7 +882,6 @@ jobs:
           name: ShinnCheat-Build-Log
           path: |
             build.log
-            source/**/*.log
           if-no-files-found: ignore
 
       # ============================================================
@@ -878,6 +897,14 @@ jobs:
           echo "========================================"
 
           echo ""
+          echo "Project:"
+          echo "${{ steps.xcode.outputs.project }}"
+
+          echo ""
+          echo "Scheme:"
+          echo "${{ steps.scheme.outputs.scheme }}"
+
+          echo ""
           echo "Source SHA256:"
           shasum -a 256 Source.zip
 
@@ -886,12 +913,16 @@ jobs:
           shasum -a 256 ShinnCheat-unsigned.ipa
 
           echo ""
-          echo "Scheme:"
-          echo "${{ steps.scheme.outputs.scheme }}"
+          echo "========================================"
+          echo "        RESULT"
+          echo "========================================"
 
-          echo ""
           echo "✅ Source verified"
-          echo "✅ Scheme verified"
+          echo "✅ Project found"
+          echo "✅ Scheme 3105 verified"
+          echo "✅ Release archive built"
           echo "✅ Binary verified"
           echo "✅ telegramURL not found"
-          echo "✅ IPA created successfully"
+          echo "✅ IPA structure verified"
+          echo "✅ IPA created"
+          echo "========================================"
