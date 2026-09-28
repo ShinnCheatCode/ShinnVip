@@ -242,8 +242,6 @@ jobs:
           elif [ -n "$PROJECT" ]; then
 
             echo "workspace=" >> "$GITHUB_OUTPUT"
-            echo "project=$PROJECT"
-
             echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
 
             echo "✅ Project:"
@@ -352,43 +350,65 @@ jobs:
             sed -n '/Schemes:/,$p'
 
           # --------------------------------------------------------
-          # Extract schemes
+          # Extract scheme
           # --------------------------------------------------------
 
-          SCHEMES=$(
+          SCHEME=$(
             echo "$LIST_OUTPUT" |
             awk '
               /^Schemes:/ {
-                found=1
-                next
-              }
+                getline
 
-              found {
-                line=$0
-                gsub(/^[ \t]+/, "", line)
-                gsub(/[ \t]+$/, "", line)
+                gsub(/^[[:space:]]+/, "")
+                gsub(/[[:space:]]+$/, "")
 
-                if (line != "" &&
-                    line !~ /^Build Configurations:/ &&
-                    line !~ /^Targets:/ &&
-                    line !~ /^Projects:/) {
-                  print line
+                if ($0 != "") {
+                  print
+                  exit
                 }
               }
             '
           )
 
-          echo ""
-          echo "Detected schemes:"
-          echo "$SCHEMES"
-
           # --------------------------------------------------------
-          # Select first scheme
+          # Fallback: find target
           # --------------------------------------------------------
-
-          SCHEME=$(echo "$SCHEMES" | head -n 1)
 
           if [ -z "$SCHEME" ]; then
+
+            echo ""
+            echo "⚠️ Không lấy được Scheme trực tiếp."
+            echo "Đang thử lấy Target..."
+
+            TARGET=$(
+              echo "$LIST_OUTPUT" |
+              awk '
+                /^Targets:/ {
+                  getline
+
+                  gsub(/^[[:space:]]+/, "")
+                  gsub(/[[:space:]]+$/, "")
+
+                  if ($0 != "") {
+                    print
+                    exit
+                  }
+                }
+              '
+            )
+
+            if [ -n "$TARGET" ]; then
+              SCHEME="$TARGET"
+            fi
+
+          fi
+
+          # --------------------------------------------------------
+          # Final check
+          # --------------------------------------------------------
+
+          if [ -z "$SCHEME" ]; then
+
             echo ""
             echo "❌ Không tìm thấy Scheme."
 
@@ -397,6 +417,7 @@ jobs:
             echo "$LIST_OUTPUT"
 
             exit 1
+
           fi
 
           echo ""
@@ -404,9 +425,12 @@ jobs:
           echo "        SELECTED SCHEME"
           echo "========================================"
 
-          echo "$SCHEME"
+          echo "Scheme: [$SCHEME]"
 
+          echo ""
           echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
+
+          echo "✅ Scheme hợp lệ."
 
       # ============================================================
       # VERIFY SCHEME
