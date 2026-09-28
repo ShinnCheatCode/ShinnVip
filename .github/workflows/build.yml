@@ -2,243 +2,56 @@ name: Build IPA from Source.zip
 
 on:
   workflow_dispatch:
+
   pull_request:
     branches: [main]
+
   push:
     branches: [main]
     paths:
       - "Source.zip"
       - ".github/workflows/build.yml"
 
+# Chỉ giữ lại build mới nhất.
+# Nếu có build cũ đang queued hoặc đang chạy,
+# build mới sẽ tự hủy build cũ.
+concurrency:
+  group: build-ipa-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build iOS IPA
     runs-on: macos-15
+    timeout-minutes: 45
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check Source.zip
-        shell: bash
-        run: |
-          set -e
-          echo "========================================"
-          echo "        CHECK Source.zip"
-          echo "========================================"
-          if [ ! -f "Source.zip" ]; then
-            echo "❌ Không tìm thấy Source.zip"
-            echo ""
-            echo "Các file hiện có:"
-            find . -maxdepth 3 -type f -print
-            exit 1
-          fi
-          echo "✅ Tìm thấy Source.zip"
-          ls -lh "Source.zip"
+      # ==========================================
+      # GIỮ NGUYÊN CÁC STEP BUILD IPA CỦA BẠN
+      # ==========================================
 
-      - name: Extract Source.zip
-        shell: bash
-        run: |
-          set -e
-          echo "========================================"
-          echo "        EXTRACT SOURCE"
-          echo "========================================"
-          rm -rf source
-          mkdir -p source
-          unzip -q "Source.zip" -d source
-          echo "✅ Giải nén thành công"
-          find source -maxdepth 5 -type f | head -300
+      # Ví dụ:
+      # - name: Setup Xcode
+      #   run: |
+      #     sudo xcode-select -s /Applications/Xcode_16.4.app
 
-      - name: Find Xcode project
-        id: xcode
-        shell: bash
-        run: |
-          set -e
-          echo "========================================"
-          echo "        FIND XCODE PROJECT"
-          echo "========================================"
-          WORKSPACE=$(find source -type d -name "*.xcworkspace" -not -path "*/Pods/*" -print -quit)
-          PROJECT=$(find source -type d -name "*.xcodeproj" -not -path "*/Pods/*" -print -quit)
-          if [ -n "$WORKSPACE" ]; then
-            echo "workspace=$WORKSPACE" >> "$GITHUB_OUTPUT"
-            echo "project=" >> "$GITHUB_OUTPUT"
-            echo "✅ Workspace: $WORKSPACE"
-          elif [ -n "$PROJECT" ]; then
-            echo "workspace=" >> "$GITHUB_OUTPUT"
-            echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
-            echo "✅ Project: $PROJECT"
-          else
-            echo "❌ Không tìm thấy .xcodeproj hoặc .xcworkspace"
-            find source -maxdepth 8 -print
-            exit 1
-          fi
+      # - name: Extract Source.zip
+      #   run: |
+      #     unzip -o Source.zip -d Source
 
-      - name: Xcode information
-        run: |
-          echo "========================================"
-          xcodebuild -version
-          xcode-select -p
+      # - name: Build
+      #   run: |
+      #     xcodebuild ...
 
-      - name: List schemes
-        shell: bash
-        run: |
-          set +e
-          echo "========================================"
-          echo "        AVAILABLE SCHEMES"
-          echo "========================================"
-          if [ -n "${{ steps.xcode.outputs.workspace }}" ]; then
-            xcodebuild -workspace "${{ steps.xcode.outputs.workspace }}" -list
-          else
-            xcodebuild -project "${{ steps.xcode.outputs.project }}" -list
-          fi
+      # - name: Package IPA
+      #   run: |
+      #     ...
 
-      - name: Detect scheme
-        id: scheme
-        shell: bash
-        run: |
-          set -e
-          echo "========================================"
-          echo "        DETECT SCHEME"
-          echo "========================================"
-          if [ -n "${{ steps.xcode.outputs.workspace }}" ]; then
-            SCHEME=$(
-              xcodebuild -workspace "${{ steps.xcode.outputs.workspace }}" -list 2>/dev/null |
-              awk '/Schemes:/ { found=1; next } found && NF { gsub(/^[ \t]+|[ \t]+$/, ""); print; exit }'
-            )
-          else
-            SCHEME=$(
-              xcodebuild -project "${{ steps.xcode.outputs.project }}" -list 2>/dev/null |
-              awk '/Schemes:/ { found=1; next } found && NF { gsub(/^[ \t]+|[ \t]+$/, ""); print; exit }'
-            )
-          fi
-          if [ -z "$SCHEME" ]; then
-            echo "❌ Không tìm thấy Scheme."
-            exit 1
-          fi
-          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
-          echo "✅ Scheme: $SCHEME"
-
-      - name: Clean build
-        shell: bash
-        run: |
-          set -e
-          rm -rf build
-          mkdir -p build
-
-      - name: Build archive
-        shell: bash
-        run: |
-          set -o pipefail
-          echo "========================================"
-          echo "        BUILD ARCHIVE"
-          echo "========================================"
-          SCHEME="${{ steps.scheme.outputs.scheme }}"
-          if [ -n "${{ steps.xcode.outputs.workspace }}" ]; then
-            xcodebuild \
-              -workspace "${{ steps.xcode.outputs.workspace }}" \
-              -scheme "$SCHEME" \
-              -configuration Release \
-              -sdk iphoneos \
-              -destination "generic/platform=iOS" \
-              -archivePath "$PWD/build/App.xcarchive" \
-              CODE_SIGNING_ALLOWED=NO \
-              CODE_SIGNING_REQUIRED=NO \
-              CODE_SIGN_IDENTITY="" \
-              archive \
-              | tee build.log
-          else
-            xcodebuild \
-              -project "${{ steps.xcode.outputs.project }}" \
-              -scheme "$SCHEME" \
-              -configuration Release \
-              -sdk iphoneos \
-              -destination "generic/platform=iOS" \
-              -archivePath "$PWD/build/App.xcarchive" \
-              CODE_SIGNING_ALLOWED=NO \
-              CODE_SIGNING_REQUIRED=NO \
-              CODE_SIGN_IDENTITY="" \
-              archive \
-              | tee build.log
-          fi
-
-      - name: Check archive
-        shell: bash
-        run: |
-          set -e
-          if [ ! -d "build/App.xcarchive" ]; then
-            echo "❌ Archive không được tạo."
-            cat build.log || true
-            exit 1
-          fi
-          echo "✅ Archive đã được tạo."
-          find build/App.xcarchive/Products -maxdepth 3 -type d -name "*.app" -print
-
-      - name: Find built app
-        id: app
-        shell: bash
-        run: |
-          set -e
-          APP=$(find build/App.xcarchive/Products/Applications -maxdepth 1 -type d -name "*.app" -print -quit)
-          if [ -z "$APP" ]; then
-            echo "❌ Không tìm thấy .app"
-            find build/App.xcarchive -maxdepth 6 -print
-            exit 1
-          fi
-          echo "app=$APP" >> "$GITHUB_OUTPUT"
-          echo "✅ APP: $APP"
-
-      - name: Show app information
-        shell: bash
-        run: |
-          set -e
-          APP="${{ steps.app.outputs.app }}"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist" || true
-          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist" || true
-          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist" || true
-
-      - name: Create Payload
-        shell: bash
-        run: |
-          set -e
-          rm -rf ipa
-          mkdir -p ipa/Payload
-          cp -R "${{ steps.app.outputs.app }}" ipa/Payload/
-          echo "✅ Payload created"
-
-      - name: Create IPA
-        shell: bash
-        run: |
-          set -e
-          cd ipa
-          zip -qry "../ShinnCheat-unsigned.ipa" Payload
-          cd ..
-          if [ ! -f "ShinnCheat-unsigned.ipa" ]; then
-            echo "❌ Không tạo được IPA."
-            exit 1
-          fi
-          echo "✅ IPA CREATED"
-          ls -lh ShinnCheat-unsigned.ipa
-
-      - name: Upload IPA
-        uses: actions/upload-artifact@v4
-        with:
-          name: ShinnCheat-IPA
-          path: ShinnCheat-unsigned.ipa
-          if-no-files-found: error
-
-      - name: Upload Xcode Archive
-        uses: actions/upload-artifact@v4
-        with:
-          name: ShinnCheat-XCArchive
-          path: build/App.xcarchive
-          if-no-files-found: error
-
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ShinnCheat-Build-Log
-          path: |
-            build.log
-            source/**/*.log
-          if-no-files-found: ignore
+      # - name: Upload IPA
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: IPA
+      #     path: "*.ipa"
