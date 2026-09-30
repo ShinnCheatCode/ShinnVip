@@ -6,23 +6,10 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "Source.zip"
-      - ".github/workflows/build.yml"
 
   pull_request:
     branches:
       - main
-    paths:
-      - "Source.zip"
-      - ".github/workflows/build.yml"
-
-concurrency:
-  group: build-ipa-${{ github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
 
 jobs:
   build:
@@ -32,86 +19,78 @@ jobs:
 
     steps:
 
-      - name: 1. Checkout repository
+      - name: TEST - workflow is running
+        run: |
+          echo "========================================"
+          echo "SHINNCHEAT BUILD WORKFLOW IS RUNNING"
+          echo "========================================"
+          echo "Repository: $GITHUB_REPOSITORY"
+          echo "Branch/ref: $GITHUB_REF"
+          echo "Event: $GITHUB_EVENT_NAME"
+          echo "Runner: $RUNNER_NAME"
+
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 2. Runner information
+      - name: Check Source.zip
         shell: bash
         run: |
-          set -e
-          echo "========================================"
-          echo "SHINNCHEAT IPA BUILD"
-          echo "========================================"
-          echo "Runner:"
-          uname -a
-          echo ""
-          echo "macOS:"
-          sw_vers
-          echo ""
-          echo "Xcode:"
-          xcodebuild -version
-          echo ""
-          echo "Xcode path:"
-          xcode-select -p
+          set -euo pipefail
 
-      - name: 3. Check Source.zip
-        shell: bash
-        run: |
-          set -e
-
-          echo "Checking Source.zip..."
+          echo "Files in repository:"
+          find . -maxdepth 3 -type f -print | sort | head -300
 
           if [ ! -f "Source.zip" ]; then
-            echo "::error::Source.zip not found in repository root."
-            echo ""
-            echo "Repository files:"
-            find . -maxdepth 3 -type f -print
+            echo "::error::Source.zip was not found in the repository ROOT."
             exit 1
           fi
 
           echo "Source.zip found:"
           ls -lh Source.zip
 
-      - name: 4. Extract Source.zip
+      - name: Extract Source.zip
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
           rm -rf source
-          rm -rf build
-          rm -rf ipa
-
           mkdir -p source
-          mkdir -p build
-          mkdir -p ipa/Payload
 
           unzip -q Source.zip -d source
 
-          echo "Source extracted."
-          echo ""
-          echo "Xcode projects:"
+          echo "Xcode projects found:"
+
           find source \
             -type d \
-            \( -name "*.xcodeproj" -o -name "*.xcworkspace" \) \
+            \( \
+              -name "*.xcodeproj" \
+              -o -name "*.xcworkspace" \
+            \) \
             -print
 
-      - name: 5. Find Xcode project
+      - name: Find Xcode project
         id: xcode
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
-          WORKSPACE=$(find source \
-            -type d \
-            -name "*.xcworkspace" \
-            -not -path "*/Pods/*" \
-            -print | sort | head -n 1)
+          WORKSPACE="$(
+            find "$GITHUB_WORKSPACE/source" \
+              -type d \
+              -name "*.xcworkspace" \
+              -not -path "*/Pods/*" \
+              -print |
+            head -n 1
+          )"
 
-          PROJECT=$(find source \
-            -type d \
-            -name "*.xcodeproj" \
-            -not -path "*/Pods/*" \
-            -print | sort | head -n 1)
+          PROJECT="$(
+            find "$GITHUB_WORKSPACE/source" \
+              -type d \
+              -name "*.xcodeproj" \
+              -not -path "*/Pods/*" \
+              -print |
+            head -n 1
+          )"
 
           if [ -n "$WORKSPACE" ]; then
 
@@ -131,7 +110,7 @@ jobs:
 
           else
 
-            echo "::error::No Xcode project or workspace found."
+            echo "::error::No .xcodeproj or .xcworkspace found."
 
             find source -maxdepth 8 -print
 
@@ -139,10 +118,10 @@ jobs:
 
           fi
 
-      - name: 6. List schemes
+      - name: List schemes
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
           echo "========================================"
           echo "AVAILABLE SCHEMES"
@@ -162,23 +141,27 @@ jobs:
 
           fi
 
-      - name: 7. Detect scheme
+      - name: Detect scheme
         id: scheme
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
           if [ "${{ steps.xcode.outputs.type }}" = "workspace" ]; then
 
-            LIST=$(xcodebuild \
-              -workspace "${{ steps.xcode.outputs.path }}" \
-              -list 2>/dev/null)
+            LIST="$(
+              xcodebuild \
+                -workspace "${{ steps.xcode.outputs.path }}" \
+                -list 2>/dev/null
+            )"
 
           else
 
-            LIST=$(xcodebuild \
-              -project "${{ steps.xcode.outputs.path }}" \
-              -list 2>/dev/null)
+            LIST="$(
+              xcodebuild \
+                -project "${{ steps.xcode.outputs.path }}" \
+                -list 2>/dev/null
+            )"
 
           fi
 
@@ -186,11 +169,10 @@ jobs:
 
           SCHEME=""
 
-          # Ưu tiên scheme của app hiện tại
           for NAME in \
-            "ThreeOneOSFive" \
-            "ShinnCheat" \
-            "ShinnCheatApp"
+            ThreeOneOSFive \
+            ShinnCheat \
+            ShinnCheatApp
           do
 
             if echo "$LIST" | grep -Fxq "    $NAME"; then
@@ -200,10 +182,9 @@ jobs:
 
           done
 
-          # Nếu không có thì lấy scheme đầu tiên
           if [ -z "$SCHEME" ]; then
 
-            SCHEME=$(
+            SCHEME="$(
               echo "$LIST" |
               awk '
                 /^Schemes:/ {
@@ -217,12 +198,12 @@ jobs:
                   exit
                 }
               '
-            )
+            )"
 
           fi
 
           if [ -z "$SCHEME" ]; then
-            echo "::error::No scheme found."
+            echo "::error::No Xcode scheme found."
             exit 1
           fi
 
@@ -232,26 +213,20 @@ jobs:
           echo "Selected scheme:"
           echo "$SCHEME"
 
-      - name: 8. Build archive
+      - name: Build unsigned archive
         shell: bash
         run: |
           set -o pipefail
 
+          mkdir -p build
+
           ARCHIVE="$GITHUB_WORKSPACE/build/ShinnCheat.xcarchive"
-          SCHEME="${{ steps.scheme.outputs.scheme }}"
-
-          echo "========================================"
-          echo "BUILD ARCHIVE"
-          echo "========================================"
-
-          echo "Scheme: $SCHEME"
-          echo "Archive: $ARCHIVE"
 
           if [ "${{ steps.xcode.outputs.type }}" = "workspace" ]; then
 
             xcodebuild \
               -workspace "${{ steps.xcode.outputs.path }}" \
-              -scheme "$SCHEME" \
+              -scheme "${{ steps.scheme.outputs.scheme }}" \
               -configuration Release \
               -sdk iphoneos \
               -destination "generic/platform=iOS" \
@@ -260,13 +235,14 @@ jobs:
               CODE_SIGNING_REQUIRED=NO \
               CODE_SIGN_IDENTITY="" \
               archive \
-              2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+              2>&1 |
+              tee "$GITHUB_WORKSPACE/build.log"
 
           else
 
             xcodebuild \
               -project "${{ steps.xcode.outputs.path }}" \
-              -scheme "$SCHEME" \
+              -scheme "${{ steps.scheme.outputs.scheme }}" \
               -configuration Release \
               -sdk iphoneos \
               -destination "generic/platform=iOS" \
@@ -275,93 +251,52 @@ jobs:
               CODE_SIGNING_REQUIRED=NO \
               CODE_SIGN_IDENTITY="" \
               archive \
-              2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+              2>&1 |
+              tee "$GITHUB_WORKSPACE/build.log"
 
           fi
 
-      - name: 9. Verify archive
+      - name: Create IPA
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
-          ARCHIVE="build/ShinnCheat.xcarchive"
-
-          if [ ! -d "$ARCHIVE" ]; then
-            echo "::error::Archive was not created."
-            tail -200 build.log || true
-            exit 1
-          fi
-
-          APP=$(find \
-            "$ARCHIVE/Products/Applications" \
-            -maxdepth 1 \
-            -type d \
-            -name "*.app" \
-            -print | head -n 1)
+          APP="$(
+            find \
+              build/ShinnCheat.xcarchive/Products/Applications \
+              -maxdepth 1 \
+              -type d \
+              -name "*.app" \
+              -print |
+            head -n 1
+          )"
 
           if [ -z "$APP" ]; then
-            echo "::error::No .app found."
-            find "$ARCHIVE" -maxdepth 7 -print
+
+            echo "::error::No .app found in archive."
+
+            find \
+              build/ShinnCheat.xcarchive \
+              -maxdepth 7 \
+              -print
+
             exit 1
+
           fi
 
-          echo "APP=$APP" >> "$GITHUB_ENV"
-
-          echo "Archive:"
-          echo "$ARCHIVE"
-
-          echo "Application:"
-          echo "$APP"
-
-      - name: 10. App information
-        shell: bash
-        run: |
-          set -e
-
-          echo "Bundle ID:"
-          /usr/libexec/PlistBuddy \
-            -c "Print :CFBundleIdentifier" \
-            "$APP/Info.plist" || true
-
-          echo "Version:"
-          /usr/libexec/PlistBuddy \
-            -c "Print :CFBundleShortVersionString" \
-            "$APP/Info.plist" || true
-
-          echo "Build:"
-          /usr/libexec/PlistBuddy \
-            -c "Print :CFBundleVersion" \
-            "$APP/Info.plist" || true
-
-      - name: 11. Create Payload
-        shell: bash
-        run: |
-          set -e
-
           rm -rf ipa
+
           mkdir -p ipa/Payload
 
           cp -R "$APP" ipa/Payload/
 
-          echo "Payload created."
-
-      - name: 12. Create IPA
-        shell: bash
-        run: |
-          set -e
-
           cd ipa
 
           zip -qry \
-            "../ShinnCheat-unsigned.ipa" \
+            "$GITHUB_WORKSPACE/ShinnCheat-unsigned.ipa" \
             Payload
 
-          cd ..
-
-          if [ ! -f "ShinnCheat-unsigned.ipa" ]; then
-            echo "::error::IPA was not created."
-            exit 1
-          fi
+          cd "$GITHUB_WORKSPACE"
 
           echo "========================================"
           echo "IPA CREATED"
@@ -369,21 +304,13 @@ jobs:
 
           ls -lh ShinnCheat-unsigned.ipa
 
-      - name: 13. Upload IPA
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: ShinnCheat-IPA
           path: ShinnCheat-unsigned.ipa
-          if-no-files-found: error
 
-      - name: 14. Upload archive
-        uses: actions/upload-artifact@v4
-        with:
-          name: ShinnCheat-XCArchive
-          path: build/ShinnCheat.xcarchive
-          if-no-files-found: error
-
-      - name: 15. Upload build log
+      - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
