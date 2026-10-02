@@ -33,7 +33,6 @@ OWNER_USERNAME = "ShinnThieuu"
 APP_NAME = "ShinnCheat"
 ALLOWED_CHAT_ID = -1004446959502
 
-# Mạng xã hội
 LINK_TELEGRAM = "https://t.me/ShinnThieuu"
 LINK_FACEBOOK = "https://www.facebook.com/share/19ZuAnvjt4/?mibextid=wwXIfr"
 LINK_TIKTOK = "https://www.tiktok.com/@._ngvuminhhieuu"
@@ -41,7 +40,6 @@ LINK_TIKTOK = "https://www.tiktok.com/@._ngvuminhhieuu"
 if not BOT_TOKEN or ":" not in BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN chưa được gắn hoặc sai định dạng.")
 
-# File app
 SHINN_FILE_ID = "BQACAgUAAxkBAAFVYx5qv_BWrk5XVyhzPR2ra1ZC7WeFoAACPCgAAkdrAVYeuSJySFyo-D0E"
 SHINN_FILE_NAME = "ShinnCheatV2Free.ipa"
 SHINN_FILE_CAPTION = (
@@ -62,22 +60,17 @@ SHINN_FILE_CAPTION = (
 )
 
 VN_TZ = timezone(timedelta(hours=7))
-
-# Auto greeting
 MORNING_HOUR, MORNING_MINUTE = 7, 0
 NIGHT_HOUR, NIGHT_MINUTE = 22, 0
 
-# Anti-spam
 SPAM_WINDOW = 10
 SPAM_THRESHOLD = 5
 MUTE_DURATION = timedelta(days=1)
 URL_FILTER = filters.TEXT & filters.Regex(r"(?i)(https?://|www\.|t\.me/|telegram\.me/)")
 
-# Verify
 VERIFY_TIMEOUT_SEC = 180
 VERIFY_MAX_ATTEMPTS = 2
 
-# ==================== ĐIỂM & QUIZ ====================
 CHECKIN_POINTS = 2
 QUIZ_POINTS = 3
 QUIZ_TIMEOUT_SEC = 180
@@ -99,12 +92,11 @@ warn_count: dict[int, int] = defaultdict(int)
 WARN_LIMIT = 3
 pending_verifications: dict[int, dict] = {}
 
-# ==================== SUPABASE ====================
+# Supabase
 SUPABASE_URL = "https://efhqbzdnrtifqjqlqseb.supabase.co"
 SUPABASE_KEY = "sb_publishable_jnycTCgXRMrluvwJORd_4g_B7ojwi9R"
 SUPABASE_TABLE = "shinn_keys"
 
-# Owner
 OWNER_USER_IDS = {8987709740}
 OWNER_USERNAMES = {"shinnthieuu"}
 
@@ -117,7 +109,6 @@ KEY_DURATIONS = {
 }
 MAX_KEYS_PER_REQUEST = 50
 
-# ==================== SHOP ====================
 SHOP_PRICES = {
     "1h": 10, "1d": 20, "3d": 50, "5d": 80,
     "7d": 100, "15d": 200, "30d": 400,
@@ -133,7 +124,6 @@ SHOP_ALIASES = {
 }
 SHOP_MAX_QTY = 10
 
-# ==================== VÔ HẠN ĐIỂM ====================
 UNLIMITED_POINTS_IDS = {8987709740}
 UNLIMITED_POINTS_LABEL = "∞ (Vô hạn)"
 UNLIMITED_POINTS_VALUE = 999_999_999
@@ -437,8 +427,8 @@ TEXTS = {
         "╰━━━━━━━━━━━━━━━━━━━━━━━╯\n\n"
         "❓ {question}\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"⚡ <b>{QUIZ_MAX_WINNERS} người đúng đầu tiên</b> nhận <b>+{QUIZ_POINTS} điểm</b>!\n"
-        f"⏱️ Thời gian: <b>{QUIZ_TIMEOUT_SEC // 60} phút</b>\n"
+        "⚡ <b>3 người đúng đầu tiên</b> nhận <b>+3 điểm</b>!\n"
+        "⏱️ Thời gian: <b>3 phút</b>\n"
         "📝 Trả lời bằng tin nhắn thường"
     ),
     "quiz_win": (
@@ -658,16 +648,15 @@ def owner_only(func):
             u = update.effective_user
             logging.info(
                 "Non-owner tried owner-cmd: id=%s username=%s",
-                u.id ifuccess u else "?", u.username if u else "?"
-"].            )
+                u.id if u else "?", u.username if u else "?"
+            )
             return
-        return await funcformat(update, context)
+        return await func(update, context)
     return wrapper
 
-# ==================== LINK FILTER =(
-===================
+# ==================== LINK FILTER ====================
 @group_only
-async def delete           _link_message(update name: Update, context: ContextTypes.DEFAULT_TYPE):
+async def delete_link_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     chat = update.effective_chat
     user = update.effective_user
@@ -738,7 +727,8 @@ async def _do_checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_points[user.id] += CHECKIN_POINTS
     rank, total_users = _rank_of(user.id)
     await msg.reply_text(
-        TEXTS["checkin_s=_display_name(user),
+        TEXTS["checkin_success"].format(
+            name=_display_name(user),
             today=datetime.now(VN_TZ).strftime("%d/%m/%Y"),
             streak=user_checkin_streak[user.id],
             points=CHECKIN_POINTS,
@@ -812,7 +802,7 @@ async def _announce_prize():
         + "\n".join(lines)
         + "\n\n━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"📩 Liên hệ @{OWNER_USERNAME} để nhận key!\n"
-        "🔄 BXH đã được reset — bắt đầu kỳ mới!"
+        "🔄 BXH đã reset — bắt đầu kỳ mới!"
     )
     try:
         if _bot_app:
@@ -890,10 +880,11 @@ async def _end_quiz(context: ContextTypes.DEFAULT_TYPE):
     winners = quiz_state["winners"]
     winner_text = "Không có ai 😢"
     if winners:
-        winner_text = ", ".join(
-            f'<a href="tg://user?id={uid}">{user_name_cache.get(uid, uid)}</a>'
-            for uid in winners
-        )
+        parts = []
+        for uid in winners:
+            name = user_name_cache.get(uid, str(uid))
+            parts.append(f'<a href=\'tg://user?id={uid}\'>{name}</a>')
+        winner_text = ", ".join(parts)
     try:
         await context.bot.send_message(
             quiz_state["chat_id"],
@@ -995,7 +986,7 @@ async def _kick_after_timeout(context: ContextTypes.DEFAULT_TYPE, user_id: int):
             pass
         await context.bot.send_message(
             info["chat_id"],
-            f"⏱️ Thành viên <a href=\"tg://user?id={user_id}\">này</a> "
+            f"⏱️ Thành viên <a href='tg://user?id={user_id}'>này</a> "
             f"bị kick do không xác thực trong {VERIFY_TIMEOUT_SEC // 60} phút.",
             parse_mode="HTML",
         )
@@ -1104,7 +1095,7 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "╔════════════════════════╗\n"
             "   ✅ <b>XÁC THỰC THÀNH CÔNG</b>\n"
             "╚════════════════════════╝\n\n"
-            f"🎊 Chào mừng <a href=\"tg://user?id={user_id}\">{query.from_user.full_name}</a>!\n\n"
+            f"🎊 Chào mừng <a href='tg://user?id={user_id}'>{query.from_user.full_name}</a>!\n\n"
             "💬 <b>Bạn có thể chat ngay bây giờ.</b>\n\n"
             "📋 <b>Lệnh hữu ích:</b>\n"
             "  • /help — Hướng dẫn\n"
@@ -1134,7 +1125,7 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
             await context.bot.send_message(
                 info["chat_id"],
-                f"🚫 <a href=\"tg://user?id={user_id}\">{query.from_user.full_name}</a> "
+                f"🚫 <a href='tg://user?id={user_id}'>{query.from_user.full_name}</a> "
                 f"đã bị kick do sai {VERIFY_MAX_ATTEMPTS} lần.",
                 parse_mode="HTML",
             )
@@ -1152,7 +1143,7 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "╔════════════════════════╗\n"
                     "   ⚠️ <b>SAI RỒI, THỬ LẠI</b>\n"
                     "╚════════════════════════╝\n\n"
-                    f"👤 <a href=\"tg://user?id={user_id}\">{query.from_user.full_name}</a>\n"
+                    f"👤 <a href='tg://user?id={user_id}'>{query.from_user.full_name}</a>\n"
                     f"❌ Lần thử: <b>{info['attempts']}/{VERIFY_MAX_ATTEMPTS}</b>\n\n"
                     f"❓ Câu hỏi: <code>{question} = ?</code>",
                     parse_mode="HTML",
@@ -1371,7 +1362,7 @@ async def _owner_create_keys(update, context, label):
         return
     if not context.args:
         await msg.reply_text(
-            f"⚠️ Dùng: <code>/{'key' + label} &lt;số_lượng&gt;</code>",
+            f"⚠️ Dùng: <code>/key{label} &lt;số_lượng&gt;</code>",
             parse_mode="HTML",
         )
         return
@@ -1647,7 +1638,6 @@ async def _do_exchange(update, context):
             + "\n".join(f"<code>{k}</code>" for k in keys)
             + "\n\n🎉 Cảm ơn bạn!"
         )
-    # Gửi DM
     dm_ok = False
     try:
         if len(dm_text) <= 4000:
@@ -1766,7 +1756,6 @@ async def keyword_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(text) < 2:
         return
 
-    # Điểm danh
     if any(kw in text for kw in ["điểm danh", "diem danh", "check in", "checkin"]):
         await _do_checkin(update, context)
         return
@@ -1778,13 +1767,11 @@ async def keyword_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                   "bảng xếp hạng", "bang xep hang", "leaderboard"]):
         await _show_bxh(update, context)
         return
-    # Shop
     if any(kw in text for kw in ["shop", "cửa hàng", "cua hang",
                                   "đổi key", "doi key", "đổi điểm", "doi diem"]):
         await _show_shop(update, context)
         return
 
-    # File app khi có "shinn"
     if "shinn" in text:
         is_about_key = any(kw in text for kw in [
             "shinncheattest", "shinncheat test", "key test", "key trial",
@@ -2083,9 +2070,10 @@ async def tagall_cmd(update, context):
         await msg.reply_text("⚠️ Chưa có user.")
         return
     content = " ".join(context.args) if context.args else "📢 Thông báo từ admin"
-    mentions = [f'<a href="tg://user?id={uid}">{name}</a>'
-                for uid, name in user_name_cache.items()]
-    text = f"╭────────────────────────────╮\n   <b>{content}</b>\n╰────────────────────────────╯\n\n" + " ".join(mentions)
+    parts = []
+    for uid, name in user_name_cache.items():
+        parts.append(f"<a href='tg://user?id={uid}'>{name}</a>")
+    text = f"╭────────────────────────────╮\n   <b>{content}</b>\n╰────────────────────────────╯\n\n" + " ".join(parts)
     try:
         await update.effective_chat.send_message(text, parse_mode="HTML")
     except Exception as e:
@@ -2159,7 +2147,7 @@ async def top_cmd(update, context):
     for i, (uid, count) in enumerate(top):
         medal = medals[i] if i < 3 else f"<b>{i+1}.</b>"
         name = user_name_cache.get(uid, str(uid))
-        lines.append(f"{medal} <a href=\"tg://user?id={uid}\">{name}</a> — <b>{count}</b>")
+        lines.append(f"{medal} <a href='tg://user?id={uid}'>{name}</a> — <b>{count}</b>")
     await update.effective_message.reply_text("\n".join(lines), parse_mode="HTML")
 
 @group_only
@@ -2189,7 +2177,6 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
     _bot_app = app
 
-    # Info
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("id", id_cmd))
@@ -2198,7 +2185,6 @@ def main():
                 "support", "rules", "about", "ad"):
         app.add_handler(CommandHandler(cmd, make_command(cmd)))
 
-    # Điểm & Event
     app.add_handler(CommandHandler("diemdanh", diemdanh_cmd))
     app.add_handler(CommandHandler("checkin", diemdanh_cmd))
     app.add_handler(CommandHandler("diem", mydiem_cmd))
@@ -2207,12 +2193,10 @@ def main():
     app.add_handler(CommandHandler("topdiem", bxh_cmd))
     app.add_handler(CommandHandler("resetdiem", resetdiem_cmd))
 
-    # Shop
     app.add_handler(CommandHandler("shop", shop_cmd))
     app.add_handler(CommandHandler("doikey", doikey_cmd))
     app.add_handler(CommandHandler("exchange", doikey_cmd))
 
-    # Owner key commands
     app.add_handler(CommandHandler("keytest", keytest_cmd))
     app.add_handler(CommandHandler("key1h", key1h_cmd))
     app.add_handler(CommandHandler("key1d", key1d_cmd))
@@ -2226,7 +2210,6 @@ def main():
     app.add_handler(CommandHandler("keydel", keydel_cmd))
     app.add_handler(CommandHandler("keystats", keystats_cmd))
 
-    # Admin
     app.add_handler(CommandHandler("pin", pin_cmd))
     app.add_handler(CommandHandler("unpin", unpin_cmd))
     app.add_handler(CommandHandler("del", del_cmd))
@@ -2241,16 +2224,13 @@ def main():
     app.add_handler(CommandHandler("tagall", tagall_cmd))
     app.add_handler(CommandHandler("setfile", setfile_cmd))
 
-    # Stats
     app.add_handler(CommandHandler("info", info_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
     app.add_handler(CommandHandler("top", top_cmd))
 
-    # Callbacks
     app.add_handler(CallbackQueryHandler(verify_callback, pattern=r"^verify:"))
     app.add_handler(CallbackQueryHandler(owner_callback, pattern=r"^show_owner$"))
 
-    # Status
     app.add_handler(MessageHandler(
         filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member
     ))
@@ -2258,23 +2238,18 @@ def main():
         filters.StatusUpdate.LEFT_CHAT_MEMBER, goodbye_member
     ))
 
-    # Link filter
     app.add_handler(MessageHandler(URL_FILTER & ~filters.COMMAND, delete_link_message))
 
-    # Tracker (group 0)
     app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND, track_message
     ), group=0)
 
-    # Keyword (group 1)
     app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND, keyword_reply
     ), group=1)
 
-    # start_dm group -1 (ưu tiên cao nhất cho DM)
     app.add_handler(CommandHandler("start", start_dm), group=-1)
 
-    # Jobs
     if app.job_queue:
         app.job_queue.run_daily(
             morning_job,
