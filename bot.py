@@ -32,7 +32,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # ==================================================================
 # Token lấy từ biến môi trường BOT_TOKEN (an toàn hơn ghi thẳng vào code).
 # Nếu muốn ghi thẳng: BOT_TOKEN = "123456:ABC..."
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+BOT_TOKEN = os.environ.get("8751726089:AAEfZt4cYvuPdkNxyDdWbPFL4-5dHhr5bpo")
 OWNER_USERNAME = "ShinnThieuu"
 APP_NAME = "ShinnCheat"
 ALLOWED_CHAT_ID = -1004446959502
