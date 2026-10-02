@@ -11,7 +11,7 @@ logging.basicConfig(
 )
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-BOT_TOKEN = os.getenv("8751726089:AAE991LNO6G15hICWl7jSX5JzVMzRwPIiTY
+BOT_TOKEN =("8751726089:AAE991LNO6G15hICWl7jSX5JzVMzRwPIiTY
 ", "").strip()
 OWNER_USERNAME = os.getenv("OWNER_USERNAME", "ShinnThieuu").strip().lstrip("@")
 APP_NAME = "ShinnCheat"
