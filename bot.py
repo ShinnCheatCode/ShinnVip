@@ -28,7 +28,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # ==================================================================
 #  CẤU HÌNH
 # ==================================================================
-BOT_TOKEN = "8751726089:AAE991LNO6G15hICWl7jSX5JzVMzRwPIiTY"
+BOT_TOKEN = "8751726089:AAEfZt4cYvuPdkNxyDdWbPFL4-5dHhr5bpo"
 OWNER_USERNAME = "ShinnThieuu"
 APP_NAME = "ShinnCheat"
 ALLOWED_CHAT_ID = -1004446959502
