@@ -24,7 +24,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 #    1. Vào @BotFather -> /revoke -> lấy token mới
 #    2. Thay token mới vào dòng BOT_TOKEN bên dưới -> Commit
 # ==================================================================
-BOT_TOKEN = "8751726089:AAE991LNO6G15hICWl7jSX5JzVMzRwPIiTY"
+BOT_TOKEN = "8751726089:AAEfZt4cYvuPdkNxyDdWbPFL4-5dHhr5bpo"
 OWNER_USERNAME = "ShinnThieuu"
 APP_NAME = "ShinnCheat"
 
