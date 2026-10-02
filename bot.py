@@ -28,7 +28,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # ==================================================================
 #  CẤU HÌNH
 # ==================================================================
-BOT_TOKEN = "8751726089:AAEfZt4cYvuPdkNxyDdWbPFL4-5dHhr5bpo"
+BOT_TOKEN = "8751726089:AAE991LNO6G15hICWl7jSX5JzVMzRwPIiTY"
 OWNER_USERNAME = "ShinnThieuu"
 APP_NAME = "ShinnCheat"
 ALLOWED_CHAT_ID = -1004446959502
@@ -43,20 +43,16 @@ if not BOT_TOKEN or ":" not in BOT_TOKEN:
 SHINN_FILE_ID = "BQACAgUAAxkBAAFVYx5qv_BWrk5XVyhzPR2ra1ZC7WeFoAACPCgAAkdrAVYeuSJySFyo-D0E"
 SHINN_FILE_NAME = "ShinnCheatV2Free.ipa"
 SHINN_FILE_CAPTION = (
-    "╭────────────────────────────╮\n"
-    "   📱 <b>SHINNCHEAT — FILE APP</b>\n"
-    "╰────────────────────────────╯\n\n"
+    "📱 <b>SHINNCHEAT — FILE APP</b>\n\n"
     "🇻🇳 <b>Phiên bản:</b> V2 Free\n"
     "📦 <b>Dung lượng:</b> ~8.6 MB\n"
     "🔑 <b>Key test:</b> <code>ShinnCheatTest</code>\n"
     "🛒 <b>Mua key:</b> @{owner}\n\n"
-    "━━━━━━━━━━━━━━━━━━━━━\n"
     "🇬🇧 <b>Version:</b> V2 Free\n"
     "📦 <b>Size:</b> ~8.6 MB\n"
     "🔑 <b>Trial key:</b> <code>ShinnCheatTest</code>\n"
-    "🛒 <b>Buy key:</b> @{owner}\n"
-    "━━━━━━━━━━━━━━━━━━━━━\n\n"
-    "⚠️ <i>Chỉ tải từ nhóm chính thức / Official group only</i>"
+    "🛒 <b>Buy key:</b> @{owner}\n\n"
+    "⚠️ <i>Chỉ tải từ nhóm chính thức</i>"
 )
 
 VN_TZ = timezone(timedelta(hours=7))
@@ -157,190 +153,170 @@ def key_keyboard() -> InlineKeyboardMarkup:
 # ==================== TEXTS ====================
 TEXTS = {
     "start": (
-        "╭━━━━━━━━━━━━━━━━━━━━━━━╮\n"
-        "   👋 <b>CHÀO MỪNG ĐẾN SHINNCHEAT</b>\n"
-        "╰━━━━━━━━━━━━━━━━━━━━━━━╯\n\n"
+        "👋 <b>CHÀO MỪNG ĐẾN SHINNCHEAT</b>\n"
+        "───────────────\n\n"
         "🤖 <b>ShinnCheat Support Bot</b>\n"
-        "💎 <i>Bot hỗ trợ cộng đồng — Chuyên nghiệp & Tận tâm</i>\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "📌 <b>Bắt đầu nhanh:</b>\n\n"
-        "  📱 /shinn — Tải file app\n"
-        "  🔑 /key — Xem danh sách key\n"
-        "  🛒 /buy — Mua key\n"
-        "  🛍️ /shop — Đổi điểm lấy key\n"
-        "  👑 /owner — Liên hệ Owner\n"
-        "  🛠️ /support — Nhận hỗ trợ\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "📖 Gõ /help để xem <b>toàn bộ hướng dẫn</b>."
+        "💎 <i>Bot hỗ trợ cộng đồng chuyên nghiệp</i>\n\n"
+        "📌 <b>Bắt đầu nhanh:</b>\n"
+        "📱 /shinn — Tải file app\n"
+        "🔑 /key — Danh sách key\n"
+        "🛒 /buy — Mua key\n"
+        "🛍️ /shop — Đổi điểm lấy key\n"
+        "👑 /owner — Liên hệ Owner\n"
+        "🛠️ /support — Nhận hỗ trợ\n\n"
+        "───────────────\n"
+        "📖 Gõ /help để xem hướng dẫn."
     ),
     "help": (
-        "╭━━━━━━━━━━━━━━━━━━━━━━━╮\n"
-        "   📖 <b>SHINNCHEAT — TRUNG TÂM HỖ TRỢ</b>\n"
-        "╰━━━━━━━━━━━━━━━━━━━━━━━╯\n\n"
-        "┌─ 📱 <b>ỨNG DỤNG</b> ─────\n"
-        "│  /shinn — Tải file app\n"
-        "│  /update — Cập nhật\n"
-        "│  /repo — Repository\n"
-        "└───────────────────\n\n"
-        "┌─ 🔑 <b>KEY</b> ─────\n"
-        "│  /key — Danh sách key\n"
-        "│  /buy — Mua key\n"
-        "│  /shop — Đổi điểm lấy key\n"
-        "└───────────────────\n\n"
-        "┌─ 🎮 <b>ĐIỂM & EVENT</b> ─────\n"
-        "│  /diemdanh — Điểm danh +2đ\n"
-        "│  /diem — Xem điểm\n"
-        "│  /bxh — BXH top\n"
-        "│  /doikey — Đổi điểm lấy key\n"
-        "└───────────────────\n\n"
-        "┌─ 👑 <b>LIÊN HỆ</b> ─────\n"
-        "│  /owner — Owner\n"
-        "│  /support — Hỗ trợ\n"
-        "│  /rules — Nội quy\n"
-        "│  /about — Giới thiệu\n"
-        "└───────────────────\n\n"
-        "┌─ 📊 <b>CÁ NHÂN</b> ─────\n"
-        "│  /id /chatid /info /stats /top\n"
-        "└───────────────────\n\n"
-        "┌─ 🛡️ <b>QUẢN TRỊ</b> ─────\n"
-        "│  /pin /unpin /del /mute /unmute\n"
-        "│  /warn /unwarn /kick /ban /unban\n"
-        "│  /say /tagall /setfile\n"
-        "└───────────────────\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "💎 <i>ShinnCheat Support Bot</i>"
+        "📖 <b>SHINNCHEAT — TRUNG TÂM HỖ TRỢ</b>\n"
+        "───────────────\n\n"
+        "📱 <b>ỨNG DỤNG</b>\n"
+        "/shinn — Tải file app\n"
+        "/update — Cập nhật\n"
+        "/repo — Repository\n\n"
+        "🔑 <b>KEY</b>\n"
+        "/key — Danh sách key\n"
+        "/buy — Mua key\n"
+        "/shop — Đổi điểm lấy key\n\n"
+        "🎮 <b>ĐIỂM & EVENT</b>\n"
+        "/diemdanh — Điểm danh +2đ\n"
+        "/diem — Xem điểm\n"
+        "/bxh — BXH top\n"
+        "/doikey — Đổi điểm lấy key\n\n"
+        "👑 <b>LIÊN HỆ</b>\n"
+        "/owner — Owner\n"
+        "/support — Hỗ trợ\n"
+        "/rules — Nội quy\n"
+        "/about — Giới thiệu\n\n"
+        "📊 <b>CÁ NHÂN</b>\n"
+        "/id /chatid /info /stats /top\n\n"
+        "🛡️ <b>QUẢN TRỊ</b>\n"
+        "/pin /unpin /del /mute /unmute\n"
+        "/warn /unwarn /kick /ban /unban\n"
+        "/say /tagall /setfile"
     ),
     "shinn": (
         "📱 <b>SHINNCHEAT</b>\n\n"
         "Gõ /shinn để nhận file app!"
     ),
     "key": (
-        "╭────────────────────────────╮\n"
-        "   🔑 <b>SHINNCHEAT KEYS</b>\n"
-        "╰────────────────────────────╯\n\n"
-        "🎫 <b>Danh sách key / Available keys:</b>\n\n"
-        "  • <code>ShinnCheat</code> — Key chính thức\n"
-        "  • <code>ShinnCheatTest</code> — Key dùng thử\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "🔑 <b>SHINNCHEAT KEYS</b>\n"
+        "───────────────\n\n"
+        "🎫 <b>Danh sách key:</b>\n"
+        "• <code>ShinnCheat</code> — Key chính thức\n"
+        "• <code>ShinnCheatTest</code> — Key dùng thử\n\n"
         "🇻🇳 <b>Đặc điểm:</b>\n"
-        "  ✅ Không giới hạn thiết bị (theo cấu hình)\n"
-        "  ✅ Kích hoạt nhanh chóng\n"
-        "  ✅ Hỗ trợ đầy đủ tính năng\n\n"
+        "✅ Không giới hạn thiết bị\n"
+        "✅ Kích hoạt nhanh chóng\n"
+        "✅ Hỗ trợ đầy đủ tính năng\n\n"
         "🇬🇧 <b>Features:</b>\n"
-        "  ✅ Unlimited devices (per config)\n"
-        "  ✅ Fast activation\n"
-        "  ✅ Full features\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "🛍️ <b>Đổi điểm lấy key miễn phí:</b> /shop\n"
+        "✅ Unlimited devices\n"
+        "✅ Fast activation\n"
+        "✅ Full features\n\n"
+        "───────────────\n"
+        "🛍️ <b>Đổi điểm lấy key free:</b> /shop\n"
         "🛒 <b>Mua key:</b> Nhấn nút bên dưới"
     ),
     "key_test": (
-        "╭────────────────────────────╮\n"
-        "   🔑 <b>KEY TEST — SHINNCHEAT</b>\n"
-        "╰────────────────────────────╯\n\n"
+        "🔑 <b>KEY TEST — SHINNCHEAT</b>\n"
+        "───────────────\n\n"
         "🎫 <b>Key dùng thử:</b>\n"
-        "  <code>ShinnCheatTest</code>\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
-        "🇻🇳 Thời hạn: <b>1 giờ</b>\n"
-        "🎯 Một số tính năng có thể bị giới hạn\n"
-        "💳 Nâng cấp lên key chính thức để dùng full\n\n"
-        "🇬🇧 Duration: <b>1 hour</b>\n"
+        "<code>ShinnCheatTest</code>\n\n"
+        "🇻🇳 <b>Thông tin:</b>\n"
+        "⏱️ Thời hạn: <b>1 giờ</b>\n"
+        "🎯 Một số tính năng bị giới hạn\n"
+        "💳 Nâng cấp để dùng full\n\n"
+        "🇬🇧 <b>Info:</b>\n"
+        "⏱️ Duration: <b>1 hour</b>\n"
         "🎯 Some features may be limited\n"
-        "💳 Upgrade to official key for full access\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "💳 Upgrade for full access\n\n"
+        "───────────────\n"
         "🛍️ <b>Đổi điểm lấy key free:</b> /shop\n"
-        "🛒 Nâng cấp / Upgrade: @{owner}"
+        "🛒 Nâng cấp: @{owner}"
     ),
     "key_official": (
-        "╭────────────────────────────╮\n"
-        "   🔑 <b>KEY CHÍNH THỨC</b>\n"
-        "╰────────────────────────────╯\n\n"
+        "🔑 <b>KEY CHÍNH THỨC</b>\n"
+        "───────────────\n\n"
         "🎫 <b>Key chính thức:</b>\n"
-        "  <code>ShinnCheat</code>\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "<code>ShinnCheat</code>\n\n"
         "🇻🇳 <b>Quyền lợi:</b>\n"
-        "  ✅ Mở khóa toàn bộ tính năng\n"
-        "  ✅ Không giới hạn thiết bị\n"
-        "  ✅ Hỗ trợ ưu tiên\n"
-        "  ✅ Cập nhật mới nhất\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "✅ Mở khóa toàn bộ tính năng\n"
+        "✅ Không giới hạn thiết bị\n"
+        "✅ Hỗ trợ ưu tiên\n"
+        "✅ Cập nhật mới nhất\n\n"
+        "───────────────\n"
         "🛒 <b>Mua key:</b> @{owner}\n"
         "🛍️ <b>Đổi điểm free:</b> /shop"
     ),
     "buy": (
-        "╭────────────────────────────╮\n"
-        "   🛒 <b>MUA KEY / BUY KEY</b>\n"
-        "╰────────────────────────────╯\n\n"
+        "🛒 <b>MUA KEY / BUY KEY</b>\n"
+        "───────────────\n\n"
         "🇻🇳 Chọn kênh liên hệ bên dưới để mua key.\n"
         "🇬🇧 Choose a contact channel below to buy.\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
-        "💡 <b>Hoặc đổi điểm lấy key MIỄN PHÍ:</b>\n"
-        "  • /diemdanh — Kiếm điểm mỗi ngày\n"
-        "  • /shop — Xem bảng giá điểm\n"
-        "  • /doikey — Đổi key\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "👇 <b>Chọn kênh / Choose channel:</b>"
+        "💡 <b>Hoặc đổi điểm MIỄN PHÍ:</b>\n"
+        "• /diemdanh — Kiếm điểm mỗi ngày\n"
+        "• /shop — Xem bảng giá điểm\n"
+        "• /doikey — Đổi key\n\n"
+        "───────────────\n"
+        "👇 <b>Chọn kênh:</b>"
     ),
     "owner": (
-        "╭────────────────────────────╮\n"
-        "   👑 <b>SHINNCHEAT OWNER</b>\n"
-        "╰────────────────────────────╯\n\n"
+        "👑 <b>SHINNCHEAT OWNER</b>\n"
+        "───────────────\n\n"
         "🇻🇳 Liên hệ Owner để mua key hoặc hỗ trợ.\n"
         "🇬🇧 Contact Owner for keys or support.\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
         "📱 <b>Telegram:</b> @{owner}\n"
         "📘 <b>Facebook:</b> NgVuMinhHieuu\n"
-        "🎵 <b>TikTok:</b> @._ngvuminhhieuu\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "💡 <i>Nếu Telegram không phản hồi, thử Facebook/TikTok nhé!</i>"
+        "🎵 <b>TikTok:</b> @._ngvuminhhieuu\n\n"
+        "───────────────\n"
+        "💡 <i>Nếu Telegram không phản hồi,\n"
+        "thử Facebook/TikTok nhé!</i>"
     ),
     "update": (
-        "╭────────────────────────────╮\n"
-        "   🚀 <b>CẬP NHẬT / UPDATE</b>\n"
-        "╰────────────────────────────╯\n\n"
+        "🚀 <b>CẬP NHẬT / UPDATE</b>\n"
+        "───────────────\n\n"
         "🇻🇳 <b>Phiên bản mới nhất:</b>\n"
-        "  ✨ Giao diện thiết kế lại\n"
-        "  🎨 Màu sắc & hiển thị đẹp hơn\n"
-        "  🖼️ Hỗ trợ cập nhật ảnh đại diện\n"
-        "  🔧 Apply/Restore Patch mượt\n"
-        "  ⚡ Tối ưu hiệu suất\n"
-        "  🔄 Đồng bộ Repository tốt\n\n"
+        "✨ Giao diện thiết kế lại\n"
+        "🎨 Màu sắc & hiển thị đẹp hơn\n"
+        "🖼️ Hỗ trợ cập nhật ảnh đại diện\n"
+        "🔧 Apply/Restore Patch mượt\n"
+        "⚡ Tối ưu hiệu suất\n"
+        "🔄 Đồng bộ Repository tốt\n\n"
         "🇬🇧 <b>Latest:</b>\n"
-        "  ✨ Redesigned interface\n"
-        "  🎨 Better colors & display\n"
-        "  🖼️ Avatar updates\n"
-        "  🔧 Smoother Apply/Restore\n"
-        "  ⚡ Performance boost\n"
-        "  🔄 Better repo sync"
+        "✨ Redesigned interface\n"
+        "🎨 Better colors & display\n"
+        "🖼️ Avatar updates\n"
+        "🔧 Smoother Apply/Restore\n"
+        "⚡ Performance boost\n"
+        "🔄 Better repo sync"
     ),
     "repo": (
-        "╭────────────────────────────╮\n"
-        "   📦 <b>REPOSITORY</b>\n"
-        "╰────────────────────────────╯\n\n"
+        "📦 <b>REPOSITORY</b>\n"
+        "───────────────\n\n"
         "🇻🇳 Theo dõi thông báo trong nhóm để nhận link repo mới nhất.\n"
-        "🇬🇧 Check group announcements for latest repo links.\n\n"
+        "🇬🇧 Check group for latest repo links.\n\n"
         "⚠️ <b>Cảnh báo:</b> Chỉ tải từ nguồn uy tín!"
     ),
     "support": (
-        "╭────────────────────────────╮\n"
-        "   🛠️ <b>HỖ TRỢ / SUPPORT</b>\n"
-        "╰────────────────────────────╯\n\n"
+        "🛠️ <b>HỖ TRỢ / SUPPORT</b>\n"
+        "───────────────\n\n"
         "🇻🇳 <b>Khi cần hỗ trợ cung cấp:</b>\n"
-        "  • Mô tả lỗi cụ thể\n"
-        "  • Phiên bản iOS\n"
-        "  • Các bước gây lỗi\n\n"
+        "• Mô tả lỗi cụ thể\n"
+        "• Phiên bản iOS\n"
+        "• Các bước gây lỗi\n\n"
         "🇬🇧 <b>When requesting help:</b>\n"
-        "  • Detailed issue\n"
-        "  • iOS version\n"
-        "  • Steps to reproduce\n\n"
+        "• Detailed issue\n"
+        "• iOS version\n"
+        "• Steps to reproduce\n\n"
         "🔒 <b>Bảo mật:</b> Không gửi password/token\n\n"
-        "💡 <i>Nếu Telegram không phản hồi, thử Facebook/TikTok!</i>\n\n"
-        "👇 <b>Chọn kênh / Choose channel:</b>"
+        "───────────────\n"
+        "💡 <i>Nếu Telegram không phản hồi,\n"
+        "thử Facebook/TikTok!</i>\n\n"
+        "👇 <b>Chọn kênh:</b>"
     ),
     "rules": (
-        "╭────────────────────────────╮\n"
-        "   📜 <b>NỘI QUY NHÓM</b>\n"
-        "╰────────────────────────────╯\n\n"
+        "📜 <b>NỘI QUY NHÓM</b>\n"
+        "───────────────\n\n"
         "1️⃣ Tôn trọng mọi thành viên\n"
         "2️⃣ Không spam / quảng cáo trái phép\n"
         "3️⃣ Không giả mạo Owner\n"
@@ -349,43 +325,39 @@ TEXTS = {
         "⚠️ Vi phạm → mute/kick/ban!"
     ),
     "about": (
-        "╭────────────────────────────╮\n"
-        "   🤖 <b>SHINNCHEAT BOT</b>\n"
-        "╰────────────────────────────╯\n\n"
+        "🤖 <b>SHINNCHEAT BOT</b>\n"
+        "───────────────\n\n"
         "🇻🇳 Bot hỗ trợ cộng đồng ShinnCheat:\n"
-        "  • Thông tin app\n"
-        "  • Key & mua key\n"
-        "  • Cập nhật phiên bản\n"
-        "  • Hỗ trợ kỹ thuật\n"
-        "  • Event đổi điểm lấy key\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "• Thông tin app\n"
+        "• Key & mua key\n"
+        "• Cập nhật phiên bản\n"
+        "• Hỗ trợ kỹ thuật\n"
+        "• Event đổi điểm lấy key\n\n"
+        "───────────────\n"
         "👑 <b>Owner:</b> @{owner}\n"
         "📘 <b>FB:</b> NgVuMinhHieuu\n"
         "🎵 <b>TikTok:</b> @._ngvuminhhieuu"
     ),
     "ad": (
-        "╭────────────────────────────╮\n"
-        "   🌙 <b>THÔNG BÁO TỪ OWNER</b>\n"
-        "╰────────────────────────────╯\n\n"
+        "🌙 <b>THÔNG BÁO TỪ OWNER</b>\n"
+        "───────────────\n\n"
         "🇻🇳 Shinn đã ngủ. Nếu gấp, liên hệ trực tiếp!\n"
-        "🇬🇧 Shinn is asleep. For urgent matters, contact directly!\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
-        "💡 <i>Nếu Telegram không phản hồi, thử Facebook/TikTok!</i>\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "👇 <b>Chọn kênh / Choose channel:</b>"
+        "🇬🇧 Shinn is asleep. Contact directly!\n\n"
+        "───────────────\n"
+        "💡 <i>Nếu Telegram không phản hồi,\n"
+        "thử Facebook/TikTok!</i>\n\n"
+        "👇 <b>Chọn kênh:</b>"
     ),
     "checkin_success": (
-        "╭━━━━━━━━━━━━━━━━━━━━━━━╮\n"
-        "   ✅ <b>ĐIỂM DANH THÀNH CÔNG</b>\n"
-        "╰━━━━━━━━━━━━━━━━━━━━━━━╯\n\n"
+        "✅ <b>ĐIỂM DANH THÀNH CÔNG</b>\n"
+        "───────────────\n\n"
         "👤 <b>{name}</b>\n"
         "📅 Ngày: <b>{today}</b>\n"
         "🔥 Chuỗi: <b>{streak} ngày</b>\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n"
         "🎁 Nhận được: <b>+{points} điểm</b>\n"
         "💎 Tổng điểm: <b>{total} điểm</b>\n"
-        "🏆 Xếp hạng: <b>#{rank}/{total_users}</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "🏆 Xếp hạng: <b>#{rank}/{total_users}</b>\n\n"
+        "───────────────\n"
         "📌 Xem BXH: /bxh\n"
         "🛍️ Đổi điểm lấy key: /shop"
     ),
@@ -396,37 +368,32 @@ TEXTS = {
         "🛍️ Đổi key ngay: /shop"
     ),
     "mydiem": (
-        "╭━━━━━━━━━━━━━━━━━━━━━━━╮\n"
-        "   💎 <b>ĐIỂM CỦA BẠN</b>\n"
-        "╰━━━━━━━━━━━━━━━━━━━━━━━╯\n\n"
+        "💎 <b>ĐIỂM CỦA BẠN</b>\n"
+        "───────────────\n\n"
         "👤 <b>{name}</b>\n"
         "🎯 Tổng điểm: <b>{total}</b>\n"
         "🔥 Chuỗi: <b>{streak} ngày</b>\n"
         "📅 Lần cuối: <b>{last}</b>\n"
         "🏆 Xếp hạng: <b>#{rank}/{total_users}</b>\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "───────────────\n"
         "📌 Điểm danh: /diemdanh\n"
         "🛍️ Đổi key: /shop"
     ),
     "bxh": (
-        "╭━━━━━━━━━━━━━━━━━━━━━━━╮\n"
-        "   🏆 <b>BẢNG XẾP HẠNG</b>\n"
-        "╰━━━━━━━━━━━━━━━━━━━━━━━╯\n\n"
+        "🏆 <b>BẢNG XẾP HẠNG</b>\n"
+        "───────────────\n\n"
         "🥇 Top 1 → Key 7 ngày\n"
         "🥈 Top 2 → Key 3 ngày\n"
         "🥉 Top 3 → Key 1 ngày\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "{lines}\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "{lines}\n\n"
+        "───────────────\n"
         "⏱️ Reset sau: <b>{days_left} ngày</b>\n"
         "📌 Điểm danh: /diemdanh"
     ),
     "quiz_start": (
-        "╭━━━━━━━━━━━━━━━━━━━━━━━╮\n"
-        "   🎯 <b>CÂU HỎI NHANH</b>\n"
-        "╰━━━━━━━━━━━━━━━━━━━━━━━╯\n\n"
+        "🎯 <b>CÂU HỎI NHANH</b>\n"
+        "───────────────\n\n"
         "❓ {question}\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n"
         "⚡ <b>3 người đúng đầu tiên</b> nhận <b>+3 điểm</b>!\n"
         "⏱️ Thời gian: <b>3 phút</b>\n"
         "📝 Trả lời bằng tin nhắn thường"
@@ -443,66 +410,59 @@ TEXTS = {
     ),
     "quiz_already": "✅ Bạn đã trả lời đúng câu này rồi!\n⏳ Chờ câu hỏi tiếp theo nhé.",
     "shop": (
-        "╭━━━━━━━━━━━━━━━━━━━━━━━╮\n"
-        "   🛍️ <b>CỬA HÀNG ĐỔI KEY</b>\n"
-        "╰━━━━━━━━━━━━━━━━━━━━━━━╯\n\n"
+        "🛍️ <b>CỬA HÀNG ĐỔI KEY</b>\n"
+        "───────────────\n\n"
         "🇻🇳 Dùng điểm để đổi key miễn phí!\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "💰 <b>BẢNG GIÁ:</b>\n\n"
-        "  🔑 <b>1h</b> — 10 điểm\n"
-        "  🔑 <b>1d</b> (1 ngày) — 20 điểm\n"
-        "  🔑 <b>3d</b> — 50 điểm\n"
-        "  🔑 <b>5d</b> — 80 điểm\n"
-        "  🔑 <b>7d</b> — 100 điểm\n"
-        "  🔑 <b>15d</b> — 200 điểm\n"
-        "  🔑 <b>30d</b> — 400 điểm\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "💰 <b>BẢNG GIÁ:</b>\n"
+        "🔑 <b>1h</b> — 10 điểm\n"
+        "🔑 <b>1d</b> (1 ngày) — 20 điểm\n"
+        "🔑 <b>3d</b> — 50 điểm\n"
+        "🔑 <b>5d</b> — 80 điểm\n"
+        "🔑 <b>7d</b> — 100 điểm\n"
+        "🔑 <b>15d</b> — 200 điểm\n"
+        "🔑 <b>30d</b> — 400 điểm\n\n"
         "💎 <b>Điểm của bạn:</b> {points}\n\n"
-        "📝 <b>Cách đổi:</b> <code>/doikey 1d</code> hoặc <code>/doikey 1d 2</code>\n"
-        "📩 Key sẽ được gửi vào <b>tin nhắn riêng</b> của bạn\n"
-        "📌 Điểm danh kiếm điểm: /diemdanh\n"
+        "───────────────\n"
+        "📝 <b>Cách đổi:</b> <code>/doikey 1d</code>\n"
+        "📩 Key gửi vào <b>tin nhắn riêng</b>\n"
+        "📌 Kiếm điểm: /diemdanh\n"
         "📊 Xem BXH: /bxh"
     ),
     "shop_success": (
-        "╭━━━━━━━━━━━━━━━━━━━━━━━╮\n"
-        "   ✅ <b>ĐỔI KEY THÀNH CÔNG</b>\n"
-        "╰━━━━━━━━━━━━━━━━━━━━━━━╯\n\n"
+        "✅ <b>ĐỔI KEY THÀNH CÔNG</b>\n"
+        "───────────────\n\n"
         "🔑 <b>Key của bạn:</b>\n"
         "<code>{key}</code>\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n"
         "⏱️ <b>Thời hạn:</b> {label}\n"
         "📅 <b>Hết hạn:</b> {expires}\n"
-        "📱 <b>Max devices:</b> 1\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "📱 <b>Max devices:</b> 1\n\n"
         "💸 <b>Đã trừ:</b> {cost}\n"
         "💎 <b>Còn lại:</b> {remaining}\n\n"
         "🎉 Cảm ơn bạn đã tham gia ShinnCheat!"
     ),
     "shop_not_enough": (
-        "╭━━━━━━━━━━━━━━━━━━━━━━━╮\n"
-        "   ❌ <b>KHÔNG ĐỦ ĐIỂM</b>\n"
-        "╰━━━━━━━━━━━━━━━━━━━━━━━╯\n\n"
+        "❌ <b>KHÔNG ĐỦ ĐIỂM</b>\n"
+        "───────────────\n\n"
         "💰 <b>Key muốn đổi:</b> {label}\n"
         "💵 <b>Giá:</b> {cost} điểm\n"
         "💎 <b>Bạn có:</b> {points} điểm\n"
         "❗ <b>Còn thiếu:</b> <b>{missing} điểm</b>\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "💡 <b>Cách kiếm điểm:</b>\n"
-        "  • /diemdanh — +2 điểm/ngày\n"
-        "  • Trả lời quiz — +3 điểm\n"
-        "  • Leo TOP BXH nhận key thưởng\n\n"
+        "• /diemdanh — +2 điểm/ngày\n"
+        "• Trả lời quiz — +3 điểm\n"
+        "• Leo TOP BXH nhận key thưởng\n\n"
         "📌 Điểm danh ngay: /diemdanh"
     ),
     "shop_bad_label": (
         "❌ Loại key <b>{label}</b> không hợp lệ.\n\n"
-        "💰 Các loại hợp lệ:\n"
-        "  <code>1h</code> — 10 điểm\n"
-        "  <code>1d</code> — 20 điểm\n"
-        "  <code>3d</code> — 50 điểm\n"
-        "  <code>5d</code> — 80 điểm\n"
-        "  <code>7d</code> — 100 điểm\n"
-        "  <code>15d</code> — 200 điểm\n"
-        "  <code>30d</code> — 400 điểm\n\n"
+        "💰 <b>Các loại hợp lệ:</b>\n"
+        "<code>1h</code> — 10 điểm\n"
+        "<code>1d</code> — 20 điểm\n"
+        "<code>3d</code> — 50 điểm\n"
+        "<code>5d</code> — 80 điểm\n"
+        "<code>7d</code> — 100 điểm\n"
+        "<code>15d</code> — 200 điểm\n"
+        "<code>30d</code> — 400 điểm\n\n"
         "📝 VD: <code>/doikey 1d</code>"
     ),
     "shop_error": "❌ <b>Lỗi tạo key:</b>\n<code>{err}</code>",
@@ -672,7 +632,7 @@ async def delete_link_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         warn = await chat.send_message(
             f"⚠️ {user.mention_html() if user else 'User'}, "
-            f"không gửi link trong nhóm! / Links not allowed!",
+            f"không gửi link trong nhóm!",
             parse_mode="HTML",
         )
         asyncio.create_task(_delayed_delete(warn, 10))
@@ -795,12 +755,11 @@ async def _announce_prize():
         name = user_name_cache.get(uid, f"User {uid}")
         lines.append(f"{i}. {name} — <b>{pts}</b> điểm → 🎁 {prizes[i]}")
     text = (
-        "╭━━━━━━━━━━━━━━━━━━━━━━━╮\n"
-        "   🎊 <b>KẾT THÚC KỲ ĐIỂM DANH</b>\n"
-        "╰━━━━━━━━━━━━━━━━━━━━━━━╯\n\n"
+        "🎊 <b>KẾT THÚC KỲ ĐIỂM DANH</b>\n"
+        "───────────────\n\n"
         "🏆 <b>TOP 3 NHẬN THƯỞNG:</b>\n\n"
         + "\n".join(lines)
-        + "\n\n━━━━━━━━━━━━━━━━━━━━━━━\n"
+        + "\n\n───────────────\n"
         f"📩 Liên hệ @{OWNER_USERNAME} để nhận key!\n"
         "🔄 BXH đã reset — bắt đầu kỳ mới!"
     )
@@ -870,7 +829,8 @@ async def _send_quiz(context: ContextTypes.DEFAULT_TYPE):
         "winners": [],
         "question": q,
     }
-    asyncio.create_task(_end_quiz(context))
+    task = asyncio.create_task(_end_quiz(context))
+    quiz_state["task"] = task
 
 async def _end_quiz(context: ContextTypes.DEFAULT_TYPE):
     global quiz_state
@@ -883,7 +843,7 @@ async def _end_quiz(context: ContextTypes.DEFAULT_TYPE):
         parts = []
         for uid in winners:
             name = user_name_cache.get(uid, str(uid))
-            parts.append(f'<a href=\'tg://user?id={uid}\'>{name}</a>')
+            parts.append(f"<a href='tg://user?id={uid}'>{name}</a>")
         winner_text = ", ".join(parts)
     try:
         await context.bot.send_message(
@@ -1021,15 +981,12 @@ async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
         ]]
         keyboard = InlineKeyboardMarkup(buttons)
         text = (
-            "╔════════════════════════╗\n"
-            "   🎉 <b>CHÀO MỪNG THÀNH VIÊN MỚI</b> 🎉\n"
-            "╚════════════════════════╝\n\n"
+            "🎉 <b>CHÀO MỪNG THÀNH VIÊN MỚI</b>\n"
+            "───────────────\n\n"
             f"👤 <b>{mention}</b>\n"
             f"📆 Tham gia: <i>{datetime.now(VN_TZ).strftime('%d/%m/%Y %H:%M')}</i>\n"
             f"🎫 Thành viên thứ: <b>{member_count}</b>\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
             "🔐 <b>XÁC THỰC ĐỂ CHAT</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
             f"❓ Câu hỏi: <code>{question} = ?</code>\n"
             "👉 Chọn 1 trong 2 đáp án:\n"
             f"⏱️ Hết hạn sau <b>{VERIFY_TIMEOUT_SEC // 60} phút</b>."
@@ -1092,17 +1049,16 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pending_verifications.pop(user_id, None)
         await context.bot.send_message(
             info["chat_id"],
-            "╔════════════════════════╗\n"
-            "   ✅ <b>XÁC THỰC THÀNH CÔNG</b>\n"
-            "╚════════════════════════╝\n\n"
+            "✅ <b>XÁC THỰC THÀNH CÔNG</b>\n"
+            "───────────────\n\n"
             f"🎊 Chào mừng <a href='tg://user?id={user_id}'>{query.from_user.full_name}</a>!\n\n"
             "💬 <b>Bạn có thể chat ngay bây giờ.</b>\n\n"
             "📋 <b>Lệnh hữu ích:</b>\n"
-            "  • /help — Hướng dẫn\n"
-            "  • /diemdanh — Kiếm điểm +2\n"
-            "  • /shop — Đổi điểm lấy key\n"
-            "  • /bxh — BXH\n"
-            "  • /rules — Nội quy\n\n"
+            "• /help — Hướng dẫn\n"
+            "• /diemdanh — Kiếm điểm +2\n"
+            "• /shop — Đổi điểm lấy key\n"
+            "• /bxh — BXH\n"
+            "• /rules — Nội quy\n\n"
             "🎉 Chúc bạn trải nghiệm vui vẻ!",
             parse_mode="HTML",
             disable_web_page_preview=True,
@@ -1140,9 +1096,8 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard = InlineKeyboardMarkup(buttons)
             try:
                 await query.edit_message_text(
-                    "╔════════════════════════╗\n"
-                    "   ⚠️ <b>SAI RỒI, THỬ LẠI</b>\n"
-                    "╚════════════════════════╝\n\n"
+                    "⚠️ <b>SAI RỒI, THỬ LẠI</b>\n"
+                    "───────────────\n\n"
                     f"👤 <a href='tg://user?id={user_id}'>{query.from_user.full_name}</a>\n"
                     f"❌ Lần thử: <b>{info['attempts']}/{VERIFY_MAX_ATTEMPTS}</b>\n\n"
                     f"❓ Câu hỏi: <code>{question} = ?</code>",
@@ -1189,9 +1144,8 @@ async def goodbye_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         member_count = "?"
     text = (
-        "╭────────────────────────────╮\n"
-        "   👋 <b>TẠM BIỆT THÀNH VIÊN</b>\n"
-        "╰────────────────────────────╯\n\n"
+        "👋 <b>TẠM BIỆT THÀNH VIÊN</b>\n"
+        "───────────────\n\n"
         f"👤 <b>{mention}</b>\n"
         f"📆 Rời: <i>{datetime.now(VN_TZ).strftime('%d/%m/%Y %H:%M')}</i>\n"
         f"🎫 Còn lại: <b>{member_count}</b>\n\n"
@@ -1214,14 +1168,12 @@ def _morning_text():
         "Chúc cả nhóm một ngày tuyệt vời! 🍀",
     ]
     return (
-        "╔════════════════════════╗\n"
-        "   ☀️ <b>CHÀO BUỔI SÁNG</b> ☀️\n"
-        "╚════════════════════════╝\n\n"
+        "☀️ <b>CHÀO BUỔI SÁNG</b> ☀️\n"
+        "───────────────\n\n"
         f"📅 Hôm nay: <b>{today}</b>\n"
         f"🕖 Bây giờ: <b>{MORNING_HOUR:02d}:{MORNING_MINUTE:02d}</b>\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
-        f"💬 {random.choice(quotes)}\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"💬 {random.choice(quotes)}\n\n"
+        "───────────────\n"
         "📌 Đừng quên điểm danh: /diemdanh\n"
         "🌤️ <i>ShinnCheat Team</i>"
     )
@@ -1236,14 +1188,11 @@ def _night_text():
         "Nghỉ ngơi thôi, sức khỏe là vàng! 💛",
     ]
     return (
-        "╔════════════════════════╗\n"
-        "   🌙 <b>CHÚC NGỦ NGON</b> 🌙\n"
-        "╚════════════════════════╝\n\n"
+        "🌙 <b>CHÚC NGỦ NGON</b> 🌙\n"
+        "───────────────\n\n"
         f"📅 Hôm nay: <b>{today}</b>\n"
         f"🕙 Bây giờ: <b>{NIGHT_HOUR:02d}:{NIGHT_MINUTE:02d}</b>\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
-        f"💬 {random.choice(quotes)}\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"💬 {random.choice(quotes)}\n\n"
         "💤 <i>ShinnCheat Team</i>"
     )
 
@@ -1385,13 +1334,12 @@ async def _owner_create_keys(update, context, label):
     secs = KEY_DURATIONS[label]
     readable = _DUR_READABLE.get(secs, f"{secs}s")
     header = (
-        "╭━━━━━━━━━━━━━━━━━━━━━━━╮\n"
-        f"   🔑 <b>ĐÃ TẠO {len(keys)} KEY</b>\n"
-        "╰━━━━━━━━━━━━━━━━━━━━━━━╯\n\n"
+        f"🔑 <b>ĐÃ TẠO {len(keys)} KEY</b>\n"
+        "───────────────\n\n"
         f"📦 Loại: {key_type}\n"
         f"⏱️ Thời hạn: {readable}\n"
-        f"🎯 Số lượng: {len(keys)}\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🎯 Số lượng: {len(keys)}\n\n"
+        "───────────────\n"
     )
     body = header + "\n".join(f"<code>{k}</code>" for k in keys)
     delivered = False
@@ -1461,9 +1409,10 @@ async def keylist_cmd(update, context):
         await sent.edit_text("📭 Chưa có key.")
         return
     now = datetime.now(timezone.utc)
-    lines = ["╭━━━━━━━━━━━━━━━━━━━━━━━╮",
-             "   📋 <b>30 KEY GẦN NHẤT</b>",
-             "╰━━━━━━━━━━━━━━━━━━━━━━━╯\n"]
+    lines = [
+        "📋 <b>30 KEY GẦN NHẤT</b>",
+        "───────────────\n",
+    ]
     for it in items:
         exp = it.get("expires_at")
         status = "🔓"
@@ -1491,9 +1440,8 @@ async def keyinfo_cmd(update, context):
         return
     used = "✅ Đã dùng" if info.get("last_used_at") else "🔓 Chưa dùng"
     text = (
-        "╭━━━━━━━━━━━━━━━━━━━━━━━╮\n"
-        "   🔍 <b>THÔNG TIN KEY</b>\n"
-        "╰━━━━━━━━━━━━━━━━━━━━━━━╯\n\n"
+        "🔍 <b>THÔNG TIN KEY</b>\n"
+        "───────────────\n\n"
         f"🔑 <code>{info['key']}</code>\n"
         f"📦 Kind: {info.get('kind','?')}\n"
         f"👤 Role: {info.get('role','?')}\n"
@@ -1530,9 +1478,8 @@ async def keystats_cmd(update, context):
         return
     avail = s["total"] - s["used"] - s["expired"]
     text = (
-        "╭━━━━━━━━━━━━━━━━━━━━━━━╮\n"
-        "   📊 <b>THỐNG KÊ KEY</b>\n"
-        "╰━━━━━━━━━━━━━━━━━━━━━━━╯\n\n"
+        "📊 <b>THỐNG KÊ KEY</b>\n"
+        "───────────────\n\n"
         f"🔢 Tổng: {s['total']}\n"
         f"✅ Đã dùng: {s['used']}\n"
         f"⛔ Hết hạn: {s['expired']}\n"
@@ -1626,14 +1573,13 @@ async def _do_exchange(update, context):
         )
     else:
         dm_text = (
-            "╭━━━━━━━━━━━━━━━━━━━━━━━╮\n"
-            f"   ✅ <b>ĐỔI {qty} KEY THÀNH CÔNG</b>\n"
-            "╰━━━━━━━━━━━━━━━━━━━━━━━╯\n\n"
+            f"✅ <b>ĐỔI {qty} KEY THÀNH CÔNG</b>\n"
+            "───────────────\n\n"
             f"⏱️ Thời hạn: {label} ({readable})\n"
             f"📅 Hết hạn: {exp_fmt}\n"
             f"💸 Đã trừ: {cost_display}\n"
             f"💎 Còn lại: {remaining}\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "───────────────\n"
             "📋 <b>DANH SÁCH KEY:</b>\n\n"
             + "\n".join(f"<code>{k}</code>" for k in keys)
             + "\n\n🎉 Cảm ơn bạn!"
@@ -1657,7 +1603,6 @@ async def _do_exchange(update, context):
             f"🔑 Số lượng: {qty} key <b>{label}</b>\n"
             f"💸 Đã trừ: {cost_display}\n"
             f"💎 Còn lại: {remaining}\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━\n"
             "📩 <b>Key đã gửi vào DM riêng của bạn!</b>",
             parse_mode="HTML",
         )
@@ -1690,22 +1635,232 @@ async def start_dm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat is None or chat.type != "private" or user is None:
         return
     points_line = f"💎 <b>Điểm của bạn:</b> {_points_display(user.id)}"
-    text = (
-        "╭━━━━━━━━━━━━━━━━━━━━━━━╮\n"
-        "   🛍️ <b>SHOP ĐỔI KEY</b>\n"
-        "╰━━━━━━━━━━━━━━━━━━━━━━━╯\n\n"
-        "👋 Chào bạn! Đây là kênh <b>đổi điểm lấy key</b> riêng tư.\n"
-        "Key sẽ được gửi kín đáo.\n\n"
-        f"{points_line}\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "📌 <b>Các lệnh dùng được:</b>\n"
-        "  • /shop — Xem bảng giá\n"
-        "  • /doikey 1d — Đổi key 1 ngày\n"
-        "  • /doikey 1d 2 — Đổi 2 key 1 ngày\n"
-        "  • /diem — Xem điểm\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━"
-    )
+
+    if _is_owner(update):
+        text = (
+            "👑 <b>OWNER CONSOLE</b>\n"
+            "───────────────\n\n"
+            f"👋 Chào <b>{user.full_name}</b>!\n"
+            f"{points_line}\n\n"
+            "🛍️ <b>SHOP (DM):</b>\n"
+            "• /shop — Xem bảng giá\n"
+            "• /doikey 1d — Đổi key\n"
+            "• /diem — Xem điểm\n\n"
+            "🎯 <b>TẠO QUIZ / THÔNG BÁO:</b>\n"
+            "• /taocauhoi &lt;câu_hỏi&gt; | &lt;đáp_án&gt;\n"
+            "• /thongbao &lt;nội_dung&gt;\n"
+            "• /tbcustom &lt;HTML&gt;\n"
+            "• /tagall &lt;nội_dung&gt;\n"
+            "• /pinmess &lt;message_id&gt;\n\n"
+            "🔑 <b>TẠO KEY (dùng trong group):</b>\n"
+            "• /keytest /key1h /key1d /key3d\n"
+            "• /key5d /key7d /key15d /key30d\n"
+            "• /keylist /keyinfo /keydel /keystats"
+        )
+    else:
+        text = (
+            "🛍️ <b>SHOP ĐỔI KEY</b>\n"
+            "───────────────\n\n"
+            "👋 Chào bạn! Đây là kênh <b>đổi điểm lấy key</b> riêng tư.\n"
+            "Key sẽ được gửi kín đáo.\n\n"
+            f"{points_line}\n\n"
+            "───────────────\n"
+            "📌 <b>Các lệnh dùng được:</b>\n"
+            "• /shop — Xem bảng giá\n"
+            "• /doikey 1d — Đổi key 1 ngày\n"
+            "• /doikey 1d 2 — Đổi 2 key\n"
+            "• /diem — Xem điểm"
+        )
     await chat.send_message(text, parse_mode="HTML", disable_web_page_preview=True)
+
+# ==================== OWNER DM COMMANDS ====================
+async def taocauhoi_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global quiz_state
+    chat = update.effective_chat
+    msg = update.effective_message
+    if chat is None or msg is None:
+        return
+    if chat.type != "private":
+        await msg.reply_text("⚠️ Lệnh này chỉ dùng trong DM riêng của bot.")
+        return
+    if not _is_owner(update):
+        await msg.reply_text("⛔ Chỉ Owner dùng được lệnh này.")
+        return
+    if not context.args:
+        await msg.reply_text(
+            "📝 <b>Cách tạo câu hỏi:</b>\n\n"
+            "<code>/taocauhoi &lt;câu_hỏi&gt; | &lt;đáp_án&gt;</code>\n\n"
+            "VD: <code>/taocauhoi 2 + 2 = ? | 4</code>",
+            parse_mode="HTML",
+        )
+        return
+    content = msg.text.split(maxsplit=1)[1] if len(msg.text.split(maxsplit=1)) > 1 else ""
+    if "|" in content:
+        parts = content.split("|", 1)
+        question, answer = parts[0].strip(), parts[1].strip()
+    elif "---" in content:
+        parts = content.split("---", 1)
+        question, answer = parts[0].strip(), parts[1].strip()
+    else:
+        await msg.reply_text(
+            "⚠️ Sai format. Dùng <code>|</code> hoặc <code>---</code> giữa câu hỏi và đáp án.",
+            parse_mode="HTML",
+        )
+        return
+    if not question or not answer:
+        await msg.reply_text("⚠️ Câu hỏi và đáp án không được trống.")
+        return
+    if quiz_state is not None:
+        old = quiz_state.get("task")
+        if old:
+            old.cancel()
+        quiz_state = None
+    text_send = (
+        "🎯 <b>CÂU HỎI NHANH</b>\n"
+        "───────────────\n\n"
+        f"❓ {question}\n\n"
+        f"⚡ <b>{QUIZ_MAX_WINNERS} người đúng đầu tiên</b> nhận <b>+{QUIZ_POINTS} điểm</b>!\n"
+        f"⏱️ Thời gian: <b>{QUIZ_TIMEOUT_SEC // 60} phút</b>\n"
+        "📝 Trả lời bằng tin nhắn thường"
+    )
+    try:
+        sent = await context.bot.send_message(ALLOWED_CHAT_ID, text_send, parse_mode="HTML")
+    except Exception as e:
+        await msg.reply_text(f"❌ Không gửi được lên group: <code>{e}</code>", parse_mode="HTML")
+        return
+    quiz_state = {
+        "chat_id": ALLOWED_CHAT_ID,
+        "answer": _normalize_answer(answer),
+        "raw_answer": answer,
+        "message_id": sent.message_id,
+        "winners": [],
+        "question": question,
+    }
+    task = asyncio.create_task(_end_quiz(context))
+    quiz_state["task"] = task
+    await msg.reply_text(
+        f"✅ <b>Đã gửi câu hỏi lên group!</b>\n\n"
+        f"❓ Câu hỏi: {question}\n"
+        f"✅ Đáp án: <code>{answer}</code>",
+        parse_mode="HTML",
+    )
+
+async def thongbao_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    msg = update.effective_message
+    if chat is None or msg is None:
+        return
+    if chat.type != "private":
+        await msg.reply_text("⚠️ Lệnh này chỉ dùng trong DM riêng của bot.")
+        return
+    if not _is_owner(update):
+        await msg.reply_text("⛔ Chỉ Owner dùng được lệnh này.")
+        return
+    if not context.args:
+        await msg.reply_text(
+            "📝 <b>Cách gửi thông báo:</b>\n\n"
+            "<code>/thongbao &lt;nội_dung&gt;</code>\n\n"
+            "VD: <code>/thongbao Bảo trì app lúc 22h hôm nay</code>",
+            parse_mode="HTML",
+        )
+        return
+    content = msg.text.split(maxsplit=1)[1] if len(msg.text.split(maxsplit=1)) > 1 else ""
+    if not content.strip():
+        await msg.reply_text("⚠️ Nội dung không được trống.")
+        return
+    text_send = (
+        "📢 <b>THÔNG BÁO TỪ OWNER</b>\n"
+        "───────────────\n\n"
+        f"{content}\n\n"
+        "───────────────\n"
+        f"👑 <b>Owner:</b> @{OWNER_USERNAME}"
+    )
+    try:
+        await context.bot.send_message(ALLOWED_CHAT_ID, text_send, parse_mode="HTML")
+        await msg.reply_text("✅ Đã gửi thông báo lên group!")
+    except Exception as e:
+        await msg.reply_text(f"❌ Lỗi: <code>{e}</code>", parse_mode="HTML")
+
+async def tbcustom_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    msg = update.effective_message
+    if chat is None or msg is None:
+        return
+    if chat.type != "private":
+        await msg.reply_text("⚠️ Lệnh này chỉ dùng trong DM.")
+        return
+    if not _is_owner(update):
+        await msg.reply_text("⛔ Chỉ Owner dùng được.")
+        return
+    if not context.args:
+        await msg.reply_text(
+            "📝 <b>Thông báo HTML thô:</b>\n\n"
+            "<code>/tbcustom &lt;nội_dung_HTML&gt;</code>\n\n"
+            "VD: <code>/tbcustom &lt;b&gt;Chào&lt;/b&gt; mọi người</code>",
+            parse_mode="HTML",
+        )
+        return
+    content = msg.text.split(maxsplit=1)[1] if len(msg.text.split(maxsplit=1)) > 1 else ""
+    try:
+        await context.bot.send_message(ALLOWED_CHAT_ID, content, parse_mode="HTML")
+        await msg.reply_text("✅ Đã gửi lên group!")
+    except Exception as e:
+        await msg.reply_text(f"❌ Lỗi: <code>{e}</code>", parse_mode="HTML")
+
+async def tagall_dm_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    msg = update.effective_message
+    if chat is None or msg is None:
+        return
+    if chat.type != "private":
+        await msg.reply_text("⚠️ Lệnh này chỉ dùng trong DM.")
+        return
+    if not _is_owner(update):
+        await msg.reply_text("⛔ Chỉ Owner dùng được.")
+        return
+    content = " ".join(context.args) if context.args else "📢 Thông báo từ admin"
+    if not user_name_cache:
+        await msg.reply_text("⚠️ Chưa có user nào trong cache.")
+        return
+    parts = [f"<a href='tg://user?id={uid}'>{name}</a>" for uid, name in user_name_cache.items()]
+    text = (
+        "📢 <b>" + content + "</b>\n"
+        "───────────────\n\n"
+        + " ".join(parts)
+    )
+    try:
+        await context.bot.send_message(ALLOWED_CHAT_ID, text, parse_mode="HTML")
+        await msg.reply_text(f"✅ Đã tag <b>{len(parts)}</b> thành viên.", parse_mode="HTML")
+    except Exception as e:
+        await msg.reply_text(f"❌ Lỗi: <code>{e}</code>", parse_mode="HTML")
+
+async def pinmess_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    msg = update.effective_message
+    if chat is None or msg is None:
+        return
+    if chat.type != "private":
+        await msg.reply_text("⚠️ Lệnh này chỉ dùng trong DM.")
+        return
+    if not _is_owner(update):
+        await msg.reply_text("⛔ Chỉ Owner dùng được.")
+        return
+    if not context.args:
+        await msg.reply_text(
+            "📝 Dùng: <code>/pinmess &lt;message_id&gt;</code>",
+            parse_mode="HTML",
+        )
+        return
+    try:
+        message_id = int(context.args[0])
+    except ValueError:
+        await msg.reply_text("⚠️ Message ID phải là số.")
+        return
+    try:
+        await context.bot.pin_chat_message(ALLOWED_CHAT_ID, message_id)
+        await msg.reply_text("✅ Đã ghim tin nhắn.")
+    except Exception as e:
+        await msg.reply_text(f"❌ Lỗi: <code>{e}</code>", parse_mode="HTML")
 
 # ==================== KEYWORD AUTO-REPLY ====================
 KEYWORD_MAP = [
@@ -1815,9 +1970,8 @@ async def setfile_cmd(update, context):
         await msg.reply_text("⚠️ Không có file.")
         return
     text = (
-        "╭────────────────────────────╮\n"
-        "   📎 <b>FILE_ID</b>\n"
-        "╰────────────────────────────╯\n\n"
+        "📎 <b>FILE_ID</b>\n"
+        "───────────────\n\n"
         f"📄 Tên: <code>{doc.file_name}</code>\n"
         f"📦 Size: <b>{doc.file_size / 1024 / 1024:.2f} MB</b>\n\n"
         f"<code>{doc.file_id}</code>"
@@ -2070,10 +2224,12 @@ async def tagall_cmd(update, context):
         await msg.reply_text("⚠️ Chưa có user.")
         return
     content = " ".join(context.args) if context.args else "📢 Thông báo từ admin"
-    parts = []
-    for uid, name in user_name_cache.items():
-        parts.append(f"<a href='tg://user?id={uid}'>{name}</a>")
-    text = f"╭────────────────────────────╮\n   <b>{content}</b>\n╰────────────────────────────╯\n\n" + " ".join(parts)
+    parts = [f"<a href='tg://user?id={uid}'>{name}</a>" for uid, name in user_name_cache.items()]
+    text = (
+        "📢 <b>" + content + "</b>\n"
+        "───────────────\n\n"
+        + " ".join(parts)
+    )
     try:
         await update.effective_chat.send_message(text, parse_mode="HTML")
     except Exception as e:
@@ -2094,9 +2250,8 @@ async def info_cmd(update, context):
     last_msg = user_msg_text.get(target.id, "—")
     pts = _points_display(target.id)
     text = (
-        "╭────────────────────────────╮\n"
-        "   👤 <b>THÔNG TIN THÀNH VIÊN</b>\n"
-        "╰────────────────────────────╯\n\n"
+        "👤 <b>THÔNG TIN THÀNH VIÊN</b>\n"
+        "───────────────\n\n"
         f"👤 Tên: <b>{_display_name(target)}</b>\n"
         f"🆔 ID: <code>{target.id}</code>\n"
         f"🔗 Username: @{target.username if target.username else '—'}\n"
@@ -2120,9 +2275,8 @@ async def stats_cmd(update, context):
     except Exception:
         mem = "?"
     text = (
-        "╭────────────────────────────╮\n"
-        "   📊 <b>THỐNG KÊ BOT</b>\n"
-        "╰────────────────────────────╯\n\n"
+        "📊 <b>THỐNG KÊ BOT</b>\n"
+        "───────────────\n\n"
         f"👥 Users: <b>{total_users}</b>\n"
         f"💬 Tin nhắn: <b>{total_msgs}</b>\n"
         f"💎 Users có điểm: <b>{len(user_points)}</b>\n"
@@ -2140,9 +2294,10 @@ async def top_cmd(update, context):
         await update.effective_message.reply_text("⚠️ Chưa có dữ liệu.")
         return
     top = user_msg_count.most_common(10)
-    lines = ["╭────────────────────────────╮",
-             "   🏆 <b>TOP 10 ACTIVE</b>",
-             "╰────────────────────────────╯", ""]
+    lines = [
+        "🏆 <b>TOP 10 ACTIVE</b>",
+        "───────────────\n",
+    ]
     medals = ["🥇", "🥈", "🥉"]
     for i, (uid, count) in enumerate(top):
         medal = medals[i] if i < 3 else f"<b>{i+1}.</b>"
@@ -2248,7 +2403,15 @@ def main():
         filters.TEXT & ~filters.COMMAND, keyword_reply
     ), group=1)
 
+    # DM handlers ưu tiên cao (group -1)
     app.add_handler(CommandHandler("start", start_dm), group=-1)
+    app.add_handler(CommandHandler("tagall", tagall_dm_cmd), group=-1)
+
+    # Owner DM commands
+    app.add_handler(CommandHandler("taocauhoi", taocauhoi_cmd))
+    app.add_handler(CommandHandler("thongbao", thongbao_cmd))
+    app.add_handler(CommandHandler("tbcustom", tbcustom_cmd))
+    app.add_handler(CommandHandler("pinmess", pinmess_cmd))
 
     if app.job_queue:
         app.job_queue.run_daily(
