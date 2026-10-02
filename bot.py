@@ -1,5 +1,7 @@
 import os
 import re
+import json
+import html
 import time
 import random
 import logging
@@ -28,7 +30,9 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # ==================================================================
 #  CẤU HÌNH
 # ==================================================================
-BOT_TOKEN = "8751726089:AAEfZt4cYvuPdkNxyDdWbPFL4-5dHhr5bpo"
+# Token lấy từ biến môi trường BOT_TOKEN (an toàn hơn ghi thẳng vào code).
+# Nếu muốn ghi thẳng: BOT_TOKEN = "123456:ABC..."
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 OWNER_USERNAME = "ShinnThieuu"
 APP_NAME = "ShinnCheat"
 ALLOWED_CHAT_ID = -1004446959502
@@ -87,6 +91,75 @@ user_name_cache: dict[int, str] = {}
 warn_count: dict[int, int] = defaultdict(int)
 WARN_LIMIT = 3
 pending_verifications: dict[int, dict] = {}
+
+# ---------------- Lưu dữ liệu ra file ----------------
+DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "shinn_data.json")
+
+
+def _save_data():
+    try:
+        data = {
+            "points": {str(k): v for k, v in user_points.items()},
+            "checkin_date": {str(k): v for k, v in user_checkin_date.items()},
+            "streak": {str(k): v for k, v in user_checkin_streak.items()},
+            "names": {str(k): v for k, v in user_name_cache.items()},
+            "last_reset": last_points_reset,
+        }
+        tmp = DATA_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        os.replace(tmp, DATA_FILE)
+    except Exception as e:
+        logging.warning("Save data failed: %s", e)
+
+
+def _load_data():
+    global last_points_reset
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return
+    except Exception as e:
+        logging.warning("Load data failed: %s", e)
+        return
+    for k, v in data.get("points", {}).items():
+        user_points[int(k)] = int(v)
+    for k, v in data.get("checkin_date", {}).items():
+        user_checkin_date[int(k)] = v
+    for k, v in data.get("streak", {}).items():
+        user_checkin_streak[int(k)] = int(v)
+    for k, v in data.get("names", {}).items():
+        user_name_cache[int(k)] = v
+    last_points_reset = data.get("last_reset", last_points_reset)
+
+
+def _remember_user(user):
+    if user is None or user.is_bot:
+        return
+    name = user.full_name or user.username or str(user.id)
+    if user_name_cache.get(user.id) != name:
+        user_name_cache[user.id] = name
+        _save_data()
+
+
+def _mention(uid: int) -> str:
+    name = html.escape(user_name_cache.get(uid, f"User {uid}"))
+    return f"<a href='tg://user?id={uid}'>{name}</a>"
+
+
+def _today_checkin_list(limit: int = 30) -> str:
+    today = datetime.now(VN_TZ).strftime("%Y-%m-%d")
+    ids = [uid for uid, d in user_checkin_date.items() if d == today]
+    if not ids:
+        return "—"
+    lines = [f"{i}. {_mention(uid)}" for i, uid in enumerate(ids[:limit], 1)]
+    if len(ids) > limit:
+        lines.append(f"... và {len(ids) - limit} người khác")
+    return "\n".join(lines)
+
+
+_exchange_locks = defaultdict(asyncio.Lock)
 
 # Supabase
 SUPABASE_URL = "https://efhqbzdnrtifqjqlqseb.supabase.co"
@@ -357,6 +430,7 @@ TEXTS = {
         "🎁 Nhận được: <b>+{points} điểm</b>\n"
         "💎 Tổng điểm: <b>{total} điểm</b>\n"
         "🏆 Xếp hạng: <b>#{rank}/{total_users}</b>\n\n"
+        "👥 <b>Đã điểm danh hôm nay:</b>\n{today_list}\n\n"
         "───────────────\n"
         "📌 Xem BXH: /bxh\n"
         "🛍️ Đổi điểm lấy key: /shop"
@@ -563,6 +637,7 @@ def group_only(func):
     return wrapper
 
 def group_or_shop_dm(func):
+    """Cho phép dùng trong group chính HOẶC nhắn riêng (DM) với bot."""
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat = update.effective_chat
         if chat is None:
@@ -670,6 +745,7 @@ async def _do_checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     if user is None or msg is None:
         return
+    _remember_user(user)
     today = _today_str()
     if user_checkin_date.get(user.id) == today:
         await msg.reply_text(
@@ -685,16 +761,18 @@ async def _do_checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_checkin_streak[user.id] = 1
     user_checkin_date[user.id] = today
     user_points[user.id] += CHECKIN_POINTS
+    _save_data()
     rank, total_users = _rank_of(user.id)
     await msg.reply_text(
         TEXTS["checkin_success"].format(
-            name=_display_name(user),
+            name=html.escape(_display_name(user)),
             today=datetime.now(VN_TZ).strftime("%d/%m/%Y"),
             streak=user_checkin_streak[user.id],
             points=CHECKIN_POINTS,
             total=user_points[user.id],
             rank=rank,
             total_users=total_users,
+            today_list=_today_checkin_list(),
         ),
         parse_mode="HTML",
     )
@@ -713,7 +791,7 @@ async def _show_mydiem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_display = _points_display(user.id)
     await msg.reply_text(
         TEXTS["mydiem"].format(
-            name=_display_name(user),
+            name=html.escape(_display_name(user)),
             total=total_display,
             streak=user_checkin_streak.get(user.id, 0),
             last=last_fmt,
@@ -735,8 +813,7 @@ async def _show_bxh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines = []
     for i, (uid, pts) in enumerate(top):
         medal = medals[i] if i < 3 else f"<b>{i+1}.</b>"
-        name = user_name_cache.get(uid, f"User {uid}")
-        lines.append(f"{medal} {name} — <b>{pts}</b> điểm")
+        lines.append(f"{medal} {_mention(uid)} — <b>{pts}</b> điểm")
     await msg.reply_text(
         TEXTS["bxh"].format(
             lines="\n".join(lines),
@@ -752,7 +829,7 @@ async def _announce_prize():
     prizes = {1: "Key 7 ngày", 2: "Key 3 ngày", 3: "Key 1 ngày"}
     lines = []
     for i, (uid, pts) in enumerate(top, 1):
-        name = user_name_cache.get(uid, f"User {uid}")
+        name = _mention(uid)
         lines.append(f"{i}. {name} — <b>{pts}</b> điểm → 🎁 {prizes[i]}")
     text = (
         "🎊 <b>KẾT THÚC KỲ ĐIỂM DANH</b>\n"
@@ -778,89 +855,198 @@ async def _reset_points_if_due():
     user_checkin_date.clear()
     user_checkin_streak.clear()
     last_points_reset = time.time()
+    _save_data()
     logging.info("Đã reset điểm sau %d ngày", POINTS_RESET_DAYS)
 
 # ==================== QUIZ ====================
+# (câu hỏi, [các đáp án], vị trí đáp án đúng bắt đầu từ 0)
 QUIZ_BANK = [
-    ("2 + 3 × 4 = ?", "14"),
-    ("Thủ đô Việt Nam là gì?", "hà nội"),
-    ("Con gì có vòi dài nhất?", "con voi"),
-    ("1 ngày có bao nhiêu giây?", "86400"),
-    ("Nước nào đông dân nhất?", "ấn độ"),
-    ("Ai là tác giả Truyện Kiều?", "nguyễn du"),
-    ("5! = ?", "120"),
-    ("100 - 25 × 2 = ?", "50"),
-    ("Hành tinh nào lớn nhất?", "sao mộc"),
-    ("Trái đất quay quanh gì?", "mặt trời"),
-    ("Kim tự tháp ở đâu?", "ai cập"),
-    ("12 + 8 × 3 = ?", "36"),
-    ("Nước sôi ở bao nhiêu độ C?", "100"),
-    ("Có bao nhiêu hành tinh?", "8"),
-    ("6 × 7 = ?", "42"),
-    ("Ngọn núi cao nhất?", "everest"),
-    ("1 năm có bao nhiêu ngày?", "365"),
-    ("Vịnh Hạ Long ở tỉnh nào?", "quảng ninh"),
-    ("Đại dương lớn nhất?", "thái bình dương"),
-    ("3^3 = ?", "27"),
+    ("2 + 3 × 4 = ?", ["10", "14", "20", "24"], 1),
+    ("Thủ đô Việt Nam là gì?", ["Hồ Chí Minh", "Đà Nẵng", "Hà Nội", "Huế"], 2),
+    ("Con vật nào có vòi dài nhất?", ["Con voi", "Con hươu", "Con khỉ", "Con gấu"], 0),
+    ("1 ngày có bao nhiêu giây?", ["3600", "86400", "1440", "43200"], 1),
+    ("Nước nào đông dân nhất?", ["Mỹ", "Ấn Độ", "Nhật Bản", "Brazil"], 1),
+    ("Ai là tác giả Truyện Kiều?", ["Nguyễn Trãi", "Nguyễn Du", "Hồ Xuân Hương", "Nguyễn Khuyến"], 1),
+    ("5! = ?", ["60", "100", "120", "720"], 2),
+    ("100 - 25 × 2 = ?", ["150", "50", "75", "25"], 1),
+    ("Hành tinh nào lớn nhất?", ["Sao Thổ", "Sao Mộc", "Sao Hỏa", "Trái Đất"], 1),
+    ("Trái Đất quay quanh gì?", ["Mặt Trăng", "Sao Hỏa", "Mặt Trời", "Sao Kim"], 2),
+    ("Kim tự tháp nổi tiếng ở đâu?", ["Ai Cập", "Hy Lạp", "Nhật Bản", "Ý"], 0),
+    ("12 + 8 × 3 = ?", ["60", "36", "30", "24"], 1),
+    ("Nước sôi ở bao nhiêu độ C?", ["90", "100", "120", "80"], 1),
+    ("Hệ Mặt Trời có bao nhiêu hành tinh?", ["7", "8", "9", "10"], 1),
+    ("6 × 7 = ?", ["36", "42", "48", "49"], 1),
+    ("Ngọn núi cao nhất thế giới?", ["Everest", "Phan Xi Păng", "Fuji", "Kilimanjaro"], 0),
+    ("1 năm (không nhuận) có bao nhiêu ngày?", ["364", "365", "366", "360"], 1),
+    ("Vịnh Hạ Long ở tỉnh nào?", ["Hải Phòng", "Quảng Ninh", "Thanh Hóa", "Khánh Hòa"], 1),
+    ("Đại dương lớn nhất?", ["Đại Tây Dương", "Ấn Độ Dương", "Thái Bình Dương", "Bắc Băng Dương"], 2),
+    ("3^3 = ?", ["9", "18", "27", "81"], 2),
 ]
+
+QUIZ_LETTERS = ["A", "B", "C", "D"]
 
 def _normalize_answer(s: str) -> str:
     return re.sub(r"\s+", " ", s.lower().strip())
 
-async def _send_quiz(context: ContextTypes.DEFAULT_TYPE):
+def _quiz_start_text(question: str, options=None) -> str:
+    text = (
+        "🎯 <b>CÂU HỎI NHANH</b>\n"
+        "───────────────\n\n"
+        f"❓ {html.escape(question)}\n\n"
+    )
+    if options:
+        text += "\n".join(
+            f"<b>{QUIZ_LETTERS[i]}.</b> {html.escape(o)}" for i, o in enumerate(options)
+        ) + "\n\n"
+    text += (
+        f"⚡ <b>{QUIZ_MAX_WINNERS} người đúng đầu tiên</b> nhận <b>+{QUIZ_POINTS} điểm</b>!\n"
+        f"⏱️ Thời gian: <b>{QUIZ_TIMEOUT_SEC // 60} phút</b>\n"
+    )
+    if options:
+        text += "👇 Bấm nút bên dưới để chọn (mỗi người chỉ được chọn 1 lần)"
+    else:
+        text += "📝 Trả lời bằng tin nhắn thường"
+    return text
+
+def _quiz_keyboard(options) -> InlineKeyboardMarkup:
+    row = [
+        InlineKeyboardButton(QUIZ_LETTERS[i], callback_data=f"quiz:{i}")
+        for i in range(len(options))
+    ]
+    return InlineKeyboardMarkup([row])
+
+async def _launch_quiz(context, question, options=None, correct=None, text_answer=None):
+    """Gửi câu hỏi lên group. options != None -> trắc nghiệm, ngược lại -> tự gõ đáp án."""
     global quiz_state
+    markup = _quiz_keyboard(options) if options else None
+    sent = await context.bot.send_message(
+        ALLOWED_CHAT_ID,
+        _quiz_start_text(question, options),
+        parse_mode="HTML",
+        reply_markup=markup,
+    )
+    if options:
+        raw_answer = f"{QUIZ_LETTERS[correct]}. {options[correct]}"
+        answer_norm = None
+    else:
+        raw_answer = text_answer
+        answer_norm = _normalize_answer(text_answer)
+    quiz_state = {
+        "chat_id": ALLOWED_CHAT_ID,
+        "message_id": sent.message_id,
+        "question": question,
+        "options": options,
+        "correct": correct,
+        "answer": answer_norm,
+        "raw_answer": raw_answer,
+        "answered": set(),
+        "winners": [],
+    }
+    quiz_state["task"] = asyncio.create_task(_end_quiz(context))
+    return sent
+
+async def _send_quiz(context: ContextTypes.DEFAULT_TYPE):
     await _reset_points_if_due()
     if quiz_state is not None:
         return
-    if not user_points:
-        return
-    q, a = random.choice(QUIZ_BANK)
-    text = TEXTS["quiz_start"].format(question=q)
+    q, opts, correct_idx = random.choice(QUIZ_BANK)
+    pairs = list(enumerate(opts))
+    random.shuffle(pairs)
+    options = [p[1] for p in pairs]
+    correct = next(i for i, p in enumerate(pairs) if p[0] == correct_idx)
     try:
-        sent = await context.bot.send_message(ALLOWED_CHAT_ID, text, parse_mode="HTML")
+        await _launch_quiz(context, q, options=options, correct=correct)
     except Exception as e:
         logging.warning("Gửi quiz thất bại: %s", e)
-        return
-    quiz_state = {
-        "chat_id": ALLOWED_CHAT_ID,
-        "answer": _normalize_answer(a),
-        "raw_answer": a,
-        "message_id": sent.message_id,
-        "winners": [],
-        "question": q,
-    }
-    task = asyncio.create_task(_end_quiz(context))
-    quiz_state["task"] = task
 
-async def _end_quiz(context: ContextTypes.DEFAULT_TYPE):
+async def _end_quiz(context: ContextTypes.DEFAULT_TYPE, instant: bool = False):
     global quiz_state
-    await asyncio.sleep(QUIZ_TIMEOUT_SEC)
-    if quiz_state is None:
+    if not instant:
+        await asyncio.sleep(QUIZ_TIMEOUT_SEC)
+    qs = quiz_state
+    if qs is None:
         return
-    winners = quiz_state["winners"]
-    winner_text = "Không có ai 😢"
-    if winners:
-        parts = []
-        for uid in winners:
-            name = user_name_cache.get(uid, str(uid))
-            parts.append(f"<a href='tg://user?id={uid}'>{name}</a>")
-        winner_text = ", ".join(parts)
+    quiz_state = None  # đóng quiz trước để không ai bấm thêm được
+    winners = qs["winners"]
+    winner_text = ", ".join(_mention(uid) for uid in winners) if winners else "Không có ai 😢"
+    if qs.get("options"):
+        try:
+            await context.bot.edit_message_reply_markup(
+                qs["chat_id"], qs["message_id"], reply_markup=None
+            )
+        except Exception:
+            pass
     try:
         await context.bot.send_message(
-            quiz_state["chat_id"],
+            qs["chat_id"],
             TEXTS["quiz_end"].format(
-                answer=quiz_state["raw_answer"],
+                answer=html.escape(qs["raw_answer"]),
                 winners=winner_text,
             ),
             parse_mode="HTML",
         )
     except Exception as e:
         logging.warning("Gửi quiz end thất bại: %s", e)
-    quiz_state = None
+
+@group_only
+async def quiz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = query.from_user
+    qs = quiz_state
+    if (qs is None or not qs.get("options") or query.message is None
+            or query.message.message_id != qs["message_id"]):
+        await query.answer("⏰ Câu hỏi này đã kết thúc.", show_alert=True)
+        return
+    try:
+        idx = int(query.data.split(":")[1])
+    except Exception:
+        await query.answer()
+        return
+    if user.id in pending_verifications:
+        await query.answer("🔐 Hãy xác thực thành viên trước đã.", show_alert=True)
+        return
+    if user.id in qs["answered"]:
+        await query.answer("⚠️ Bạn đã chọn rồi, mỗi người chỉ được chọn 1 lần!", show_alert=True)
+        return
+    if len(qs["winners"]) >= QUIZ_MAX_WINNERS:
+        await query.answer("⏰ Đã đủ người trả lời đúng.", show_alert=True)
+        return
+
+    qs["answered"].add(user.id)
+    _remember_user(user)
+
+    if idx != qs["correct"]:
+        await query.answer("❌ Sai rồi! Chúc bạn may mắn lần sau.", show_alert=True)
+        return
+
+    qs["winners"].append(user.id)
+    user_points[user.id] += QUIZ_POINTS
+    _save_data()
+    pos = len(qs["winners"])
+    await query.answer(f"✅ Chính xác! +{QUIZ_POINTS} điểm", show_alert=True)
+    try:
+        await context.bot.send_message(
+            qs["chat_id"],
+            TEXTS["quiz_win"].format(
+                mention=user.mention_html(),
+                points=QUIZ_POINTS,
+                pos=pos,
+                total=user_points[user.id],
+            ),
+            parse_mode="HTML",
+            reply_to_message_id=qs["message_id"],
+        )
+    except Exception as e:
+        logging.warning("Gửi thông báo thắng thất bại: %s", e)
+    if len(qs["winners"]) >= QUIZ_MAX_WINNERS:
+        old = qs.get("task")
+        if old:
+            old.cancel()
+        asyncio.create_task(_end_quiz(context, instant=True))
 
 async def _check_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> bool:
-    global quiz_state
-    if quiz_state is None:
+    """Chỉ dùng cho câu hỏi kiểu tự gõ đáp án (owner tạo bằng /taocauhoi 2 phần)."""
+    if quiz_state is None or quiz_state.get("options"):
         return False
     if update.effective_chat is None or update.effective_chat.id != quiz_state["chat_id"]:
         return False
@@ -868,31 +1054,36 @@ async def _check_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
     msg = update.effective_message
     if user is None or msg is None:
         return False
+    if _normalize_answer(text) != quiz_state["answer"]:
+        return False
     if user.id in quiz_state["winners"]:
         await msg.reply_text(TEXTS["quiz_already"], parse_mode="HTML")
         return True
     if len(quiz_state["winners"]) >= QUIZ_MAX_WINNERS:
         return False
-    if _normalize_answer(text) == quiz_state["answer"]:
-        quiz_state["winners"].append(user.id)
-        user_points[user.id] += QUIZ_POINTS
-        pos = len(quiz_state["winners"])
-        try:
-            await msg.reply_text(
-                TEXTS["quiz_win"].format(
-                    mention=user.mention_html(),
-                    points=QUIZ_POINTS,
-                    pos=pos,
-                    total=user_points[user.id],
-                ),
-                parse_mode="HTML",
-            )
-        except Exception:
-            pass
-        if len(quiz_state["winners"]) >= QUIZ_MAX_WINNERS:
-            asyncio.create_task(_end_quiz(context))
-        return True
-    return False
+    quiz_state["winners"].append(user.id)
+    user_points[user.id] += QUIZ_POINTS
+    _remember_user(user)
+    _save_data()
+    pos = len(quiz_state["winners"])
+    try:
+        await msg.reply_text(
+            TEXTS["quiz_win"].format(
+                mention=user.mention_html(),
+                points=QUIZ_POINTS,
+                pos=pos,
+                total=user_points[user.id],
+            ),
+            parse_mode="HTML",
+        )
+    except Exception:
+        pass
+    if len(quiz_state["winners"]) >= QUIZ_MAX_WINNERS:
+        old = quiz_state.get("task")
+        if old:
+            old.cancel()
+        asyncio.create_task(_end_quiz(context, instant=True))
+    return True
 
 # ==================== MESSAGE TRACKER ====================
 @group_only
@@ -903,7 +1094,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     user_msg_count[user.id] += 1
     user_msg_text[user.id] = msg.text[:100]
-    user_name_cache[user.id] = _display_name(user)
+    _remember_user(user)
     if user.id not in user_first_seen:
         user_first_seen[user.id] = time.time()
     handled = await _check_quiz_answer(update, context, msg.text)
@@ -963,7 +1154,7 @@ async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
     for new_user in msg.new_chat_members:
         if new_user.is_bot:
             continue
-        user_name_cache[new_user.id] = _display_name(new_user)
+        _remember_user(new_user)
         user_first_seen.setdefault(new_user.id, time.time())
         try:
             member_count = await context.bot.get_chat_member_count(chat.id)
@@ -1034,9 +1225,10 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
         return
+    safe_name = html.escape(query.from_user.full_name)
     if chosen == info["answer"]:
         try:
-            await context.bot.restrict_member(user_id, _full_perms())
+            await context.bot.restrict_chat_member(info["chat_id"], user_id, _full_perms())
         except Exception as e:
             logging.warning("Unmute failed: %s", e)
         try:
@@ -1051,7 +1243,7 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             info["chat_id"],
             "✅ <b>XÁC THỰC THÀNH CÔNG</b>\n"
             "───────────────\n\n"
-            f"🎊 Chào mừng <a href='tg://user?id={user_id}'>{query.from_user.full_name}</a>!\n\n"
+            f"🎊 Chào mừng <a href='tg://user?id={user_id}'>{safe_name}</a>!\n\n"
             "💬 <b>Bạn có thể chat ngay bây giờ.</b>\n\n"
             "📋 <b>Lệnh hữu ích:</b>\n"
             "• /help — Hướng dẫn\n"
@@ -1081,7 +1273,7 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
             await context.bot.send_message(
                 info["chat_id"],
-                f"🚫 <a href='tg://user?id={user_id}'>{query.from_user.full_name}</a> "
+                f"🚫 <a href='tg://user?id={user_id}'>{safe_name}</a> "
                 f"đã bị kick do sai {VERIFY_MAX_ATTEMPTS} lần.",
                 parse_mode="HTML",
             )
@@ -1098,7 +1290,7 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.edit_message_text(
                     "⚠️ <b>SAI RỒI, THỬ LẠI</b>\n"
                     "───────────────\n\n"
-                    f"👤 <a href='tg://user?id={user_id}'>{query.from_user.full_name}</a>\n"
+                    f"👤 <a href='tg://user?id={user_id}'>{safe_name}</a>\n"
                     f"❌ Lần thử: <b>{info['attempts']}/{VERIFY_MAX_ATTEMPTS}</b>\n\n"
                     f"❓ Câu hỏi: <code>{question} = ?</code>",
                     parse_mode="HTML",
@@ -1108,7 +1300,7 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logging.warning("Edit verify msg failed: %s", e)
     await query.answer()
 
-@group_only
+@group_or_shop_dm
 async def owner_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1133,10 +1325,9 @@ async def goodbye_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if left is None or left.is_bot:
         return
     mention = left.mention_html()
-    name = _display_name(left)
+    name = html.escape(_display_name(left))
     user_msg_count.pop(left.id, None)
     user_msg_text.pop(left.id, None)
-    user_name_cache.pop(left.id, None)
     warn_count.pop(left.id, None)
     pending_verifications.pop(left.id, None)
     try:
@@ -1328,7 +1519,7 @@ async def _owner_create_keys(update, context, label):
     try:
         result = await sb_create_keys(label, qty, key_type, user.id)
     except Exception as e:
-        await sent.edit_text(f"❌ Lỗi: <code>{e}</code>", parse_mode="HTML")
+        await sent.edit_text(f"❌ Lỗi: <code>{html.escape(str(e))}</code>", parse_mode="HTML")
         return
     keys = [r["key"] for r in result]
     secs = KEY_DURATIONS[label]
@@ -1370,32 +1561,32 @@ async def _owner_create_keys(update, context, label):
         else:
             await msg.reply_text(body, parse_mode="HTML")
 
-@group_only
+@group_or_shop_dm
 @owner_only
 async def keytest_cmd(u, c): await _owner_create_keys(u, c, "test")
-@group_only
+@group_or_shop_dm
 @owner_only
 async def key1h_cmd(u, c): await _owner_create_keys(u, c, "1h")
-@group_only
+@group_or_shop_dm
 @owner_only
 async def key1d_cmd(u, c): await _owner_create_keys(u, c, "1d")
-@group_only
+@group_or_shop_dm
 @owner_only
 async def key3d_cmd(u, c): await _owner_create_keys(u, c, "3d")
-@group_only
+@group_or_shop_dm
 @owner_only
 async def key5d_cmd(u, c): await _owner_create_keys(u, c, "5d")
-@group_only
+@group_or_shop_dm
 @owner_only
 async def key7d_cmd(u, c): await _owner_create_keys(u, c, "7d")
-@group_only
+@group_or_shop_dm
 @owner_only
 async def key15d_cmd(u, c): await _owner_create_keys(u, c, "15d")
-@group_only
+@group_or_shop_dm
 @owner_only
 async def key30d_cmd(u, c): await _owner_create_keys(u, c, "30d")
 
-@group_only
+@group_or_shop_dm
 @owner_only
 async def keylist_cmd(update, context):
     msg = update.effective_message
@@ -1403,7 +1594,7 @@ async def keylist_cmd(update, context):
     try:
         items = await sb_list_keys(30)
     except Exception as e:
-        await sent.edit_text(f"❌ Lỗi: <code>{e}</code>", parse_mode="HTML")
+        await sent.edit_text(f"❌ Lỗi: <code>{html.escape(str(e))}</code>", parse_mode="HTML")
         return
     if not items:
         await sent.edit_text("📭 Chưa có key.")
@@ -1427,7 +1618,7 @@ async def keylist_cmd(update, context):
         lines.append(f"{status} <code>{it['key']}</code> — <b>{it.get('label','?')}</b>")
     await sent.edit_text("\n".join(lines), parse_mode="HTML")
 
-@group_only
+@group_or_shop_dm
 @owner_only
 async def keyinfo_cmd(update, context):
     msg = update.effective_message
@@ -1453,7 +1644,7 @@ async def keyinfo_cmd(update, context):
     )
     await msg.reply_text(text, parse_mode="HTML")
 
-@group_only
+@group_or_shop_dm
 @owner_only
 async def keydel_cmd(update, context):
     msg = update.effective_message
@@ -1463,18 +1654,18 @@ async def keydel_cmd(update, context):
     key_str = context.args[0].strip()
     ok = await sb_delete_key(key_str)
     await msg.reply_text(
-        f"✅ Đã xoá <code>{key_str}</code>." if ok else "❌ Xoá thất bại.",
+        f"✅ Đã xoá <code>{html.escape(key_str)}</code>." if ok else "❌ Xoá thất bại.",
         parse_mode="HTML",
     )
 
-@group_only
+@group_or_shop_dm
 @owner_only
 async def keystats_cmd(update, context):
     msg = update.effective_message
     try:
         s = await sb_stats()
     except Exception as e:
-        await msg.reply_text(f"❌ Lỗi: <code>{e}</code>", parse_mode="HTML")
+        await msg.reply_text(f"❌ Lỗi: <code>{html.escape(str(e))}</code>", parse_mode="HTML")
         return
     avail = s["total"] - s["used"] - s["expired"]
     text = (
@@ -1503,8 +1694,10 @@ async def _show_shop(update, context):
 async def _do_exchange(update, context):
     msg = update.effective_message
     user = update.effective_user
-    if msg is None or user is None:
+    chat = update.effective_chat
+    if msg is None or user is None or chat is None:
         return
+    _remember_user(user)
     if not context.args:
         await _show_shop(update, context)
         return
@@ -1512,7 +1705,7 @@ async def _do_exchange(update, context):
     label = SHOP_ALIASES.get(raw_label, raw_label)
     if label not in SHOP_PRICES:
         await msg.reply_text(
-            TEXTS["shop_bad_label"].format(label=raw_label),
+            TEXTS["shop_bad_label"].format(label=html.escape(raw_label)),
             parse_mode="HTML",
         )
         return
@@ -1526,97 +1719,99 @@ async def _do_exchange(update, context):
     if qty < 1 or qty > SHOP_MAX_QTY:
         await msg.reply_text(f"⚠️ Số lượng từ 1 đến {SHOP_MAX_QTY}.")
         return
+
     cost = SHOP_PRICES[label] * qty
     is_unlimited = user.id in UNLIMITED_POINTS_IDS
-    current_points = user_points.get(user.id, 0)
-    if not is_unlimited and current_points < cost:
-        missing = cost - current_points
-        readable = _DUR_READABLE.get(KEY_DURATIONS[label], label)
-        await msg.reply_text(
-            TEXTS["shop_not_enough"].format(
-                label=f"{qty}× {label} ({readable})",
-                cost=cost,
-                points=current_points,
-                missing=missing,
-            ),
-            parse_mode="HTML",
-        )
-        return
-    sent = await msg.reply_text("⏳ Đang tạo key...")
-    try:
-        result = await sb_create_keys(label, qty, "vip", user.id)
-    except Exception as e:
-        await sent.edit_text(
-            TEXTS["shop_error"].format(err=str(e)[:300]),
-            parse_mode="HTML",
-        )
-        return
-    if is_unlimited:
-        remaining = UNLIMITED_POINTS_LABEL
-        cost_display = "— (Owner)"
-    else:
-        user_points[user.id] -= cost
-        remaining = f"{user_points[user.id]} điểm"
-        cost_display = f"{cost} điểm"
-    keys = [r["key"] for r in result]
-    exp_iso = result[0].get("expires_at", "")
-    try:
-        exp_dt = datetime.fromisoformat(exp_iso.replace("Z", "+00:00"))
-        exp_fmt = exp_dt.astimezone(VN_TZ).strftime("%d/%m/%Y %H:%M")
-    except Exception:
-        exp_fmt = exp_iso[:19]
     readable = _DUR_READABLE.get(KEY_DURATIONS[label], label)
-    if qty == 1:
-        dm_text = TEXTS["shop_success"].format(
-            key=keys[0], label=f"{label} ({readable})",
-            expires=exp_fmt, cost=cost_display, remaining=remaining,
-        )
-    else:
-        dm_text = (
-            f"✅ <b>ĐỔI {qty} KEY THÀNH CÔNG</b>\n"
-            "───────────────\n\n"
-            f"⏱️ Thời hạn: {label} ({readable})\n"
-            f"📅 Hết hạn: {exp_fmt}\n"
-            f"💸 Đã trừ: {cost_display}\n"
-            f"💎 Còn lại: {remaining}\n\n"
-            "───────────────\n"
-            "📋 <b>DANH SÁCH KEY:</b>\n\n"
-            + "\n".join(f"<code>{k}</code>" for k in keys)
-            + "\n\n🎉 Cảm ơn bạn!"
-        )
-    dm_ok = False
-    try:
-        if len(dm_text) <= 4000:
-            await context.bot.send_message(user.id, dm_text, parse_mode="HTML")
+
+    async with _exchange_locks[user.id]:
+        current = user_points.get(user.id, 0)
+        if not is_unlimited and current < cost:
+            await msg.reply_text(
+                TEXTS["shop_not_enough"].format(
+                    label=f"{qty}× {label} ({readable})", cost=cost,
+                    points=current, missing=cost - current),
+                parse_mode="HTML",
+            )
+            return
+
+        sent = await msg.reply_text("⏳ Đang tạo key...")
+        if not is_unlimited:
+            user_points[user.id] -= cost          # trừ điểm trước
+            _save_data()
+
+        def _refund():
+            if not is_unlimited:
+                user_points[user.id] += cost
+                _save_data()
+
+        try:
+            result = await sb_create_keys(label, qty, "vip", user.id)
+        except Exception as e:
+            _refund()
+            await sent.edit_text(
+                TEXTS["shop_error"].format(err=html.escape(str(e)[:300])),
+                parse_mode="HTML",
+            )
+            return
+
+        keys = [r["key"] for r in result]
+        if is_unlimited:
+            remaining, cost_display = UNLIMITED_POINTS_LABEL, "— (Owner)"
         else:
-            header = dm_text.split("📋 <b>DANH SÁCH KEY:</b>")[0] + "📋 <b>DANH SÁCH KEY:</b>"
-            await context.bot.send_message(user.id, header, parse_mode="HTML")
-            for i in range(0, len(keys), 40):
-                ct = "\n".join(f"<code>{k}</code>" for k in keys[i:i+40])
-                await context.bot.send_message(user.id, ct, parse_mode="HTML")
-        dm_ok = True
-    except Exception as e:
-        logging.warning("DM fail user %s: %s", user.id, e)
-    if dm_ok:
+            remaining, cost_display = f"{user_points[user.id]} điểm", f"{cost} điểm"
+
+        exp_iso = result[0].get("expires_at", "")
+        try:
+            exp_dt = datetime.fromisoformat(exp_iso.replace("Z", "+00:00"))
+            exp_fmt = exp_dt.astimezone(VN_TZ).strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            exp_fmt = exp_iso[:19]
+
+        if qty == 1:
+            dm_text = TEXTS["shop_success"].format(
+                key=keys[0], label=f"{label} ({readable})",
+                expires=exp_fmt, cost=cost_display, remaining=remaining)
+        else:
+            dm_text = (
+                f"✅ <b>ĐỔI {qty} KEY THÀNH CÔNG</b>\n───────────────\n\n"
+                f"⏱️ Thời hạn: {label} ({readable})\n📅 Hết hạn: {exp_fmt}\n"
+                f"💸 Đã trừ: {cost_display}\n💎 Còn lại: {remaining}\n\n"
+                "───────────────\n📋 <b>DANH SÁCH KEY:</b>\n\n"
+                + "\n".join(f"<code>{k}</code>" for k in keys)
+                + "\n\n🎉 Cảm ơn bạn!"
+            )
+
+        try:
+            if len(dm_text) <= 4000:
+                await context.bot.send_message(user.id, dm_text, parse_mode="HTML")
+            else:
+                for i in range(0, len(keys), 40):
+                    ct = "\n".join(f"<code>{k}</code>" for k in keys[i:i+40])
+                    await context.bot.send_message(user.id, ct, parse_mode="HTML")
+        except Exception as e:
+            logging.warning("DM fail user %s: %s", user.id, e)
+            _refund()
+            for k in keys:                        # xoá key, không để lộ ở group
+                try:
+                    await sb_delete_key(k)
+                except Exception:
+                    pass
+            await sent.edit_text(
+                "⚠️ Không gửi được key vào DM.\n"
+                f"👉 Bấm vào @{context.bot.username} → <b>Start</b> rồi đổi lại.\n"
+                "💎 Điểm của bạn đã được hoàn.",
+                parse_mode="HTML",
+            )
+            return
+
         await sent.edit_text(
             "✅ <b>Đổi key thành công!</b>\n\n"
             f"🔑 Số lượng: {qty} key <b>{label}</b>\n"
-            f"💸 Đã trừ: {cost_display}\n"
-            f"💎 Còn lại: {remaining}\n\n"
+            f"💸 Đã trừ: {cost_display}\n💎 Còn lại: {remaining}\n\n"
             "📩 <b>Key đã gửi vào DM riêng của bạn!</b>",
             parse_mode="HTML",
         )
-    else:
-        await sent.edit_text(
-            "⚠️ Không gửi được DM. Gửi key tại đây:",
-            parse_mode="HTML",
-        )
-        if len(dm_text) <= 4000:
-            await msg.reply_text(dm_text, parse_mode="HTML")
-        else:
-            for i in range(0, len(keys), 40):
-                ct = "\n".join(f"<code>{k}</code>" for k in keys[i:i+40])
-                await msg.reply_text(ct, parse_mode="HTML")
 
 @group_or_shop_dm
 @spam_protected
@@ -1640,19 +1835,19 @@ async def start_dm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = (
             "👑 <b>OWNER CONSOLE</b>\n"
             "───────────────\n\n"
-            f"👋 Chào <b>{user.full_name}</b>!\n"
+            f"👋 Chào <b>{html.escape(user.full_name)}</b>!\n"
             f"{points_line}\n\n"
             "🛍️ <b>SHOP (DM):</b>\n"
             "• /shop — Xem bảng giá\n"
             "• /doikey 1d — Đổi key\n"
             "• /diem — Xem điểm\n\n"
             "🎯 <b>TẠO QUIZ / THÔNG BÁO:</b>\n"
-            "• /taocauhoi &lt;câu_hỏi&gt; | &lt;đáp_án&gt;\n"
+            "• /taocauhoi — Tạo câu hỏi (trắc nghiệm A/B/C/D hoặc tự gõ), gõ lệnh để xem mẫu\n"
             "• /thongbao &lt;nội_dung&gt;\n"
             "• /tbcustom &lt;HTML&gt;\n"
             "• /tagall &lt;nội_dung&gt;\n"
             "• /pinmess &lt;message_id&gt;\n\n"
-            "🔑 <b>TẠO KEY (dùng trong group):</b>\n"
+            "🔑 <b>TẠO KEY (dùng trong group hoặc DM):</b>\n"
             "• /keytest /key1h /key1d /key3d\n"
             "• /key5d /key7d /key15d /key30d\n"
             "• /keylist /keyinfo /keydel /keystats"
@@ -1669,7 +1864,8 @@ async def start_dm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• /shop — Xem bảng giá\n"
             "• /doikey 1d — Đổi key 1 ngày\n"
             "• /doikey 1d 2 — Đổi 2 key\n"
-            "• /diem — Xem điểm"
+            "• /diem — Xem điểm\n"
+            "• /bxh — Xem BXH"
         )
     await chat.send_message(text, parse_mode="HTML", disable_web_page_preview=True)
 
@@ -1689,59 +1885,73 @@ async def taocauhoi_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await msg.reply_text(
             "📝 <b>Cách tạo câu hỏi:</b>\n\n"
-            "<code>/taocauhoi &lt;câu_hỏi&gt; | &lt;đáp_án&gt;</code>\n\n"
-            "VD: <code>/taocauhoi 2 + 2 = ? | 4</code>",
+            "🔘 <b>Trắc nghiệm (bấm nút A/B/C/D):</b>\n"
+            "<code>/taocauhoi câu hỏi | đáp án A | đáp án B | đáp án C | đáp án D | A</code>\n"
+            "Phần cuối là chữ cái của đáp án đúng. Có thể dùng 2-4 đáp án.\n\n"
+            "VD: <code>/taocauhoi 2 + 2 = ? | 3 | 4 | 5 | 6 | B</code>\n\n"
+            "⌨️ <b>Tự gõ đáp án:</b>\n"
+            "<code>/taocauhoi câu hỏi | đáp án</code>\n"
+            "VD: <code>/taocauhoi Thủ đô Việt Nam? | hà nội</code>",
             parse_mode="HTML",
         )
         return
-    content = msg.text.split(maxsplit=1)[1] if len(msg.text.split(maxsplit=1)) > 1 else ""
+    parts_all = msg.text.split(maxsplit=1)
+    content = parts_all[1] if len(parts_all) > 1 else ""
     if "|" in content:
-        parts = content.split("|", 1)
-        question, answer = parts[0].strip(), parts[1].strip()
+        parts = [p.strip() for p in content.split("|")]
     elif "---" in content:
-        parts = content.split("---", 1)
-        question, answer = parts[0].strip(), parts[1].strip()
+        parts = [p.strip() for p in content.split("---", 1)]
     else:
         await msg.reply_text(
-            "⚠️ Sai format. Dùng <code>|</code> hoặc <code>---</code> giữa câu hỏi và đáp án.",
+            "⚠️ Sai format. Dùng <code>|</code> giữa các phần. Gõ /taocauhoi để xem mẫu.",
             parse_mode="HTML",
         )
         return
-    if not question or not answer:
-        await msg.reply_text("⚠️ Câu hỏi và đáp án không được trống.")
+    if any(not p for p in parts):
+        await msg.reply_text("⚠️ Không được để trống phần nào.")
         return
+
+    question = parts[0]
+    options = None
+    correct = None
+    text_answer = None
+    if len(parts) == 2:
+        text_answer = parts[1]
+    elif 4 <= len(parts) <= 6:
+        options = parts[1:-1]
+        letter = parts[-1].upper()
+        if letter not in QUIZ_LETTERS[:len(options)]:
+            await msg.reply_text(
+                f"⚠️ Đáp án đúng phải là một trong: {', '.join(QUIZ_LETTERS[:len(options)])}."
+            )
+            return
+        correct = QUIZ_LETTERS.index(letter)
+    else:
+        await msg.reply_text(
+            "⚠️ Sai format. Trắc nghiệm cần 2-4 đáp án + chữ cái đáp án đúng. "
+            "Gõ /taocauhoi để xem mẫu."
+        )
+        return
+
     if quiz_state is not None:
         old = quiz_state.get("task")
         if old:
             old.cancel()
         quiz_state = None
-    text_send = (
-        "🎯 <b>CÂU HỎI NHANH</b>\n"
-        "───────────────\n\n"
-        f"❓ {question}\n\n"
-        f"⚡ <b>{QUIZ_MAX_WINNERS} người đúng đầu tiên</b> nhận <b>+{QUIZ_POINTS} điểm</b>!\n"
-        f"⏱️ Thời gian: <b>{QUIZ_TIMEOUT_SEC // 60} phút</b>\n"
-        "📝 Trả lời bằng tin nhắn thường"
-    )
     try:
-        sent = await context.bot.send_message(ALLOWED_CHAT_ID, text_send, parse_mode="HTML")
+        await _launch_quiz(context, question, options=options, correct=correct,
+                           text_answer=text_answer)
     except Exception as e:
-        await msg.reply_text(f"❌ Không gửi được lên group: <code>{e}</code>", parse_mode="HTML")
+        await msg.reply_text(
+            f"❌ Không gửi được lên group: <code>{html.escape(str(e))}</code>",
+            parse_mode="HTML",
+        )
         return
-    quiz_state = {
-        "chat_id": ALLOWED_CHAT_ID,
-        "answer": _normalize_answer(answer),
-        "raw_answer": answer,
-        "message_id": sent.message_id,
-        "winners": [],
-        "question": question,
-    }
-    task = asyncio.create_task(_end_quiz(context))
-    quiz_state["task"] = task
+    shown = quiz_state["raw_answer"] if quiz_state else ""
     await msg.reply_text(
         f"✅ <b>Đã gửi câu hỏi lên group!</b>\n\n"
-        f"❓ Câu hỏi: {question}\n"
-        f"✅ Đáp án: <code>{answer}</code>",
+        f"❓ Câu hỏi: {html.escape(question)}\n"
+        f"✅ Đáp án: <code>{html.escape(shown)}</code>",
         parse_mode="HTML",
     )
 
@@ -1771,7 +1981,7 @@ async def thongbao_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text_send = (
         "📢 <b>THÔNG BÁO TỪ OWNER</b>\n"
         "───────────────\n\n"
-        f"{content}\n\n"
+        f"{html.escape(content)}\n\n"
         "───────────────\n"
         f"👑 <b>Owner:</b> @{OWNER_USERNAME}"
     )
@@ -1779,7 +1989,7 @@ async def thongbao_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(ALLOWED_CHAT_ID, text_send, parse_mode="HTML")
         await msg.reply_text("✅ Đã gửi thông báo lên group!")
     except Exception as e:
-        await msg.reply_text(f"❌ Lỗi: <code>{e}</code>", parse_mode="HTML")
+        await msg.reply_text(f"❌ Lỗi: <code>{html.escape(str(e))}</code>", parse_mode="HTML")
 
 async def tbcustom_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
@@ -1805,7 +2015,7 @@ async def tbcustom_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(ALLOWED_CHAT_ID, content, parse_mode="HTML")
         await msg.reply_text("✅ Đã gửi lên group!")
     except Exception as e:
-        await msg.reply_text(f"❌ Lỗi: <code>{e}</code>", parse_mode="HTML")
+        await msg.reply_text(f"❌ Lỗi: <code>{html.escape(str(e))}</code>", parse_mode="HTML")
 
 async def tagall_dm_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
@@ -1818,11 +2028,11 @@ async def tagall_dm_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _is_owner(update):
         await msg.reply_text("⛔ Chỉ Owner dùng được.")
         return
-    content = " ".join(context.args) if context.args else "📢 Thông báo từ admin"
+    content = html.escape(" ".join(context.args)) if context.args else "📢 Thông báo từ admin"
     if not user_name_cache:
         await msg.reply_text("⚠️ Chưa có user nào trong cache.")
         return
-    parts = [f"<a href='tg://user?id={uid}'>{name}</a>" for uid, name in user_name_cache.items()]
+    parts = [_mention(uid) for uid in user_name_cache]
     text = (
         "📢 <b>" + content + "</b>\n"
         "───────────────\n\n"
@@ -1832,7 +2042,7 @@ async def tagall_dm_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(ALLOWED_CHAT_ID, text, parse_mode="HTML")
         await msg.reply_text(f"✅ Đã tag <b>{len(parts)}</b> thành viên.", parse_mode="HTML")
     except Exception as e:
-        await msg.reply_text(f"❌ Lỗi: <code>{e}</code>", parse_mode="HTML")
+        await msg.reply_text(f"❌ Lỗi: <code>{html.escape(str(e))}</code>", parse_mode="HTML")
 
 async def pinmess_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
@@ -1860,7 +2070,7 @@ async def pinmess_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.pin_chat_message(ALLOWED_CHAT_ID, message_id)
         await msg.reply_text("✅ Đã ghim tin nhắn.")
     except Exception as e:
-        await msg.reply_text(f"❌ Lỗi: <code>{e}</code>", parse_mode="HTML")
+        await msg.reply_text(f"❌ Lỗi: <code>{html.escape(str(e))}</code>", parse_mode="HTML")
 
 # ==================== KEYWORD AUTO-REPLY ====================
 KEYWORD_MAP = [
@@ -1972,16 +2182,18 @@ async def setfile_cmd(update, context):
     text = (
         "📎 <b>FILE_ID</b>\n"
         "───────────────\n\n"
-        f"📄 Tên: <code>{doc.file_name}</code>\n"
+        f"📄 Tên: <code>{html.escape(doc.file_name or '')}</code>\n"
         f"📦 Size: <b>{doc.file_size / 1024 / 1024:.2f} MB</b>\n\n"
         f"<code>{doc.file_id}</code>"
     )
     await msg.reply_text(text, parse_mode="HTML")
 
 # ==================== INFO ====================
-@group_only
+@group_or_shop_dm
 @spam_protected
 async def start(update, context):
+    if update.effective_chat and update.effective_chat.type == "private":
+        return  # DM đã có start_dm xử lý
     if update.effective_message:
         await update.effective_message.reply_text(
             render("start"), parse_mode="HTML",
@@ -1989,7 +2201,7 @@ async def start(update, context):
             disable_web_page_preview=True,
         )
 
-@group_only
+@group_or_shop_dm
 @spam_protected
 async def help_cmd(update, context):
     if update.effective_message:
@@ -2000,7 +2212,7 @@ async def help_cmd(update, context):
 async def id_cmd(update, context):
     if update.effective_message and update.effective_user:
         await update.effective_message.reply_text(
-            f"👤 Tên: <b>{_display_name(update.effective_user)}</b>\n"
+            f"👤 Tên: <b>{html.escape(_display_name(update.effective_user))}</b>\n"
             f"🆔 ID: <code>{update.effective_user.id}</code>\n"
             f"💬 Chat ID: <code>{update.effective_chat.id}</code>",
             parse_mode="HTML",
@@ -2016,7 +2228,7 @@ async def chatid_cmd(update, context):
         )
 
 def make_command(key):
-    @group_only
+    @group_or_shop_dm
     @spam_protected
     async def callback(update, context):
         if not update.effective_message:
@@ -2223,8 +2435,8 @@ async def tagall_cmd(update, context):
     if not user_name_cache:
         await msg.reply_text("⚠️ Chưa có user.")
         return
-    content = " ".join(context.args) if context.args else "📢 Thông báo từ admin"
-    parts = [f"<a href='tg://user?id={uid}'>{name}</a>" for uid, name in user_name_cache.items()]
+    content = html.escape(" ".join(context.args)) if context.args else "📢 Thông báo từ admin"
+    parts = [_mention(uid) for uid in user_name_cache]
     text = (
         "📢 <b>" + content + "</b>\n"
         "───────────────\n\n"
@@ -2247,12 +2459,12 @@ async def info_cmd(update, context):
     first = user_first_seen.get(target.id)
     first_str = datetime.fromtimestamp(first, VN_TZ).strftime("%d/%m/%Y %H:%M") if first else "—"
     warns = warn_count.get(target.id, 0)
-    last_msg = user_msg_text.get(target.id, "—")
+    last_msg = html.escape(user_msg_text.get(target.id, "—"))
     pts = _points_display(target.id)
     text = (
         "👤 <b>THÔNG TIN THÀNH VIÊN</b>\n"
         "───────────────\n\n"
-        f"👤 Tên: <b>{_display_name(target)}</b>\n"
+        f"👤 Tên: <b>{html.escape(_display_name(target))}</b>\n"
         f"🆔 ID: <code>{target.id}</code>\n"
         f"🔗 Username: @{target.username if target.username else '—'}\n"
         f"💬 Tin nhắn: <b>{count}</b>\n"
@@ -2301,17 +2513,25 @@ async def top_cmd(update, context):
     medals = ["🥇", "🥈", "🥉"]
     for i, (uid, count) in enumerate(top):
         medal = medals[i] if i < 3 else f"<b>{i+1}.</b>"
-        name = user_name_cache.get(uid, str(uid))
-        lines.append(f"{medal} <a href='tg://user?id={uid}'>{name}</a> — <b>{count}</b>")
+        lines.append(f"{medal} {_mention(uid)} — <b>{count}</b>")
     await update.effective_message.reply_text("\n".join(lines), parse_mode="HTML")
 
-@group_only
+@group_or_shop_dm
 @spam_protected
-async def diemdanh_cmd(update, context): await _do_checkin(update, context)
-@group_only
+async def diemdanh_cmd(update, context):
+    # Điểm danh chỉ trong group để tránh gian lận
+    if update.effective_chat.type == "private":
+        await update.effective_message.reply_text(
+            "📌 Hãy điểm danh trong nhóm chính nhé!"
+        )
+        return
+    await _do_checkin(update, context)
+
+@group_or_shop_dm
 @spam_protected
 async def mydiem_cmd(update, context): await _show_mydiem(update, context)
-@group_only
+
+@group_or_shop_dm
 @spam_protected
 async def bxh_cmd(update, context): await _show_bxh(update, context)
 
@@ -2324,6 +2544,7 @@ async def resetdiem_cmd(update, context):
     user_checkin_date.clear()
     user_checkin_streak.clear()
     last_points_reset = time.time()
+    _save_data()
     await update.effective_message.reply_text("✅ Đã reset điểm & BXH.")
 
 # ==================== MAIN ====================
@@ -2331,6 +2552,19 @@ def main():
     global _bot_app
     app = Application.builder().token(BOT_TOKEN).build()
     _bot_app = app
+
+    _load_data()
+
+    async def remember_user_handler(update, context):
+        chat = update.effective_chat
+        if chat and chat.id == ALLOWED_CHAT_ID:
+            _remember_user(update.effective_user)
+
+    async def on_error(update, context):
+        logging.error("Lỗi handler:", exc_info=context.error)
+
+    app.add_handler(MessageHandler(filters.ALL, remember_user_handler), group=-2)
+    app.add_error_handler(on_error)
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
@@ -2385,6 +2619,7 @@ def main():
 
     app.add_handler(CallbackQueryHandler(verify_callback, pattern=r"^verify:"))
     app.add_handler(CallbackQueryHandler(owner_callback, pattern=r"^show_owner$"))
+    app.add_handler(CallbackQueryHandler(quiz_callback, pattern=r"^quiz:"))
 
     app.add_handler(MessageHandler(
         filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member
