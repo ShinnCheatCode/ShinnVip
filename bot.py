@@ -19,9 +19,10 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # ==================================================================
-#  CẤU HÌNH — GẮN TOKEN TRỰC TIẾP
-#  Sau khi bot chạy OK, vào @BotFather -> /revoke để đổi token mới
-#  rồi thay token mới vào đây.
+#  CẤU HÌNH — TOKEN GẮN SẴN
+#  Sau khi bot chạy OK:
+#    1. Vào @BotFather -> /revoke -> lấy token mới
+#    2. Thay token mới vào dòng BOT_TOKEN bên dưới -> Commit
 # ==================================================================
 BOT_TOKEN = "8751726089:AAE991LNO6G15hICWl7jSX5JzVMzRwPIiTY"
 OWNER_USERNAME = "ShinnThieuu"
@@ -34,8 +35,11 @@ if not BOT_TOKEN or ":" not in BOT_TOKEN:
 SPAM_WINDOW = 10                      # giây
 SPAM_THRESHOLD = 5                    # số lệnh tối đa trong SPAM_WINDOW
 MUTE_DURATION = timedelta(days=1)     # mute 1 ngày
-URL_PATTERN = r"(https?://|www\.|t\.me/|telegram\.me/)"
-URL_FILTER = filters.TEXT & filters.Regex(URL_PATTERN, re.IGNORECASE)
+
+# (?i) = không phân biệt hoa/thường — BẮT BUỘC nhét trong pattern
+URL_FILTER = filters.TEXT & filters.Regex(
+    r"(?i)(https?://|www\.|t\.me/|telegram\.me/)"
+)
 
 # Lưu thời điểm dùng lệnh: user_id -> deque[timestamp]
 user_cmd_times: dict[int, deque] = defaultdict(deque)
@@ -306,7 +310,9 @@ def main():
                     "support", "rules", "about", "ad"):
         app.add_handler(CommandHandler(command, make_command(command)))
 
+    # Chặn link — đặt TRƯỚC keyword_reply
     app.add_handler(MessageHandler(URL_FILTER & ~filters.COMMAND, delete_link_message))
+    # Auto-reply keyword
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, keyword_reply))
 
     logging.info("ShinnCheat bot is running.")
