@@ -18,13 +18,17 @@ logging.basicConfig(
 )
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-# ---------------- Config ----------------
-BOT_TOKEN = os.getenv("8751726089:AAE991LNO6G15hICWl7jSX5JzVMzRwPIiTY", "").strip()
-OWNER_USERNAME = os.getenv("OWNER_USERNAME", "ShinnThieuu").strip().lstrip("@")
+# ==================================================================
+#  CẤU HÌNH — GẮN TOKEN TRỰC TIẾP
+#  Sau khi bot chạy OK, vào @BotFather -> /revoke để đổi token mới
+#  rồi thay token mới vào đây.
+# ==================================================================
+BOT_TOKEN = "8751726089:AAE991LNO6G15hICWl7jSX5JzVMzRwPIiTY"
+OWNER_USERNAME = "ShinnThieuu"
 APP_NAME = "ShinnCheat"
 
-if not BOT_TOKEN:
-    raise RuntimeError("Missing BOT_TOKEN secret. Add it in GitHub repository Secrets.")
+if not BOT_TOKEN or ":" not in BOT_TOKEN:
+    raise RuntimeError("BOT_TOKEN chưa được gắn hoặc sai định dạng.")
 
 # --- Anti-spam / Anti-link config ---
 SPAM_WINDOW = 10                      # giây
@@ -154,7 +158,7 @@ def render(key: str) -> str:
 
 # ---------------- Helpers ----------------
 async def _is_privileged(chat, user) -> bool:
-    """True nếu user là owner / admin / creator (bỏ qua kiểm tra)."""
+    """True nếu user là owner / admin / creator."""
     if user is None:
         return False
     if user.username and user.username.lower() == OWNER_USERNAME.lower():
@@ -295,7 +299,6 @@ async def keyword_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Commands
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("id", id_cmd))
@@ -303,10 +306,7 @@ def main():
                     "support", "rules", "about", "ad"):
         app.add_handler(CommandHandler(command, make_command(command)))
 
-    # Link deleter — đặt TRƯỚC keyword_reply để chặn tin có link
     app.add_handler(MessageHandler(URL_FILTER & ~filters.COMMAND, delete_link_message))
-
-    # Keyword auto-reply (không áp dụng cho lệnh)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, keyword_reply))
 
     logging.info("ShinnCheat bot is running.")
