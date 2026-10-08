@@ -1,9 +1,9 @@
 name: Build ShinnManager IPA
 
 on:
-  workflow_dispatch:          # Bấm tay để build
+  workflow_dispatch:
   push:
-    branches: [main]          # Tự build khi push lên main
+    branches: [main]
 
 permissions:
   contents: read
@@ -17,6 +17,10 @@ jobs:
     name: Build unsigned IPA
     runs-on: macos-14
     timeout-minutes: 35
+
+    defaults:
+      run:
+        working-directory: ShinnManager   # ← quan trọng
 
     steps:
       - name: Checkout
@@ -84,7 +88,7 @@ jobs:
         with:
           name: ShinnManager-ipa
           path: |
-            ShinnManager.ipa
-            ShinnManager.ipa.sha256
+            ShinnManager/ShinnManager.ipa
+            ShinnManager/ShinnManager.ipa.sha256
           if-no-files-found: error
           retention-days: 14
