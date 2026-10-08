@@ -1,54 +1,26 @@
-name: Build ShinnManger IPA
+name: Build ShinnManager IPA
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:          # Bấm tay để build
   push:
-    branches:
-      - main
+    branches: [main]          # Tự build khi push lên main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shinnmanager-ipa
+  cancel-in-progress: true
 
 jobs:
   build:
+    name: Build unsigned IPA
     runs-on: macos-14
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Check ZIP
-        run: |
-          set -euo pipefail
-          ls -lah
-          test -f ShinnManger.zip
-
-      - name: Extract source
-        run: |
-          set -euo pipefail
-
-          rm -rf build_source
-          mkdir -p build_source
-
-          unzip -q ShinnManger.zip -d build_source
-
-          echo "===== Extracted files ====="
-          find build_source -maxdepth 3 -type f | sort | head -200
-
-      - name: Detect Flutter project
-        run: |
-          set -euo pipefail
-
-          PROJECT=$(find build_source -name pubspec.yaml -type f -print -quit)
-
-          if [ -z "$PROJECT" ]; then
-            echo "ERROR: Không tìm thấy pubspec.yaml"
-            exit 1
-          fi
-
-          PROJECT_DIR=$(dirname "$PROJECT")
-
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-          echo "Flutter project:"
-          echo "$PROJECT_DIR"
+        uses: actions/checkout@v4
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -56,97 +28,63 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Flutter version
-        run: flutter --version
+      - name: Show tool versions
+        run: |
+          flutter --version
+          dart --version
+          xcodebuild -version
 
-      - name: Flutter pub get
-        working-directory: ${{ env.PROJECT_DIR }}
+      - name: Generate iOS host project
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/shinn_flutter_template
+          flutter create \
+            --platforms=ios \
+            --org com.shinn \
+            --project-name shinn_manager \
+            --ios-language swift \
+            /tmp/shinn_flutter_template
+          rm -rf ios
+          cp -R /tmp/shinn_flutter_template/ios ios
+
+      - name: Configure iOS
+        shell: bash
+        run: |
+          set -euo pipefail
+          P="ios/Runner/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ShinnManager" "$P" || \
+            /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ShinnManager" "$P"
+          /usr/libexec/PlistBuddy -c "Add :NSFaceIDUsageDescription string Xac thuc de mo ShinnManager" "$P" || \
+            /usr/libexec/PlistBuddy -c "Set :NSFaceIDUsageDescription Xac thuc de mo ShinnManager" "$P"
+          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*/IPHONEOS_DEPLOYMENT_TARGET = 17.0/g' ios/Runner.xcodeproj/project.pbxproj
+
+      - name: Install dependencies
         run: flutter pub get
 
-      - name: Analyze
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          flutter analyze --no-fatal-infos || true
+      - name: Analyze Dart
+        run: flutter analyze --no-fatal-infos
 
-      - name: Create iOS project if missing
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          set -euo pipefail
+      - name: Build iOS release (unsigned)
+        run: flutter build ios --release --no-codesign
 
-          if [ ! -d ios ]; then
-            echo "ios/ chưa tồn tại - tạo iOS project"
-
-            flutter create \
-              --platforms=ios \
-              --org com.shinn \
-              --project-name shinnmanager \
-              .
-
-          else
-            echo "Đã có ios/, giữ nguyên."
-          fi
-
-      - name: Set minimum iOS version
-        working-directory: ${{ env.PROJECT_DIR }}
+      - name: Package unsigned IPA
+        shell: bash
         run: |
           set -euo pipefail
-
-          if [ -f ios/Podfile ]; then
-            sed -i '' "s/# platform :ios, '.*'/platform :ios, '17.0'/" ios/Podfile || true
-
-            if ! grep -q "platform :ios" ios/Podfile; then
-              sed -i '' "1i\\
-platform :ios, '17.0'
-" ios/Podfile
-            fi
-          fi
-
-      - name: Flutter clean
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: flutter clean
-
-      - name: Flutter pub get again
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: flutter pub get
-
-      - name: Build iOS
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          set -euo pipefail
-
-          flutter build ios \
-            --release \
-            --no-codesign
-
-      - name: Package IPA
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          set -euo pipefail
-
-          rm -rf Payload
+          rm -rf Payload ShinnManager.ipa
           mkdir -p Payload
-
-          APP=$(find build/ios/iphoneos -maxdepth 1 -name "*.app" -type d -print -quit)
-
-          if [ -z "$APP" ]; then
-            echo "ERROR: Không tìm thấy .app"
-            find build/ios -maxdepth 4 -print
-            exit 1
-          fi
-
-          echo "APP=$APP"
-
-          cp -R "$APP" Payload/
-
-          zip -qry ../ShinnManger.ipa Payload
-
-      - name: SHA256
-        run: |
-          shasum -a 256 ShinnManger.ipa
+          cp -R build/ios/iphoneos/Runner.app Payload/ShinnManager.app
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent Payload ShinnManager.ipa
+          shasum -a 256 ShinnManager.ipa | tee ShinnManager.ipa.sha256
+          ls -lh ShinnManager.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: ShinnManger-IPA
-          path: ShinnManger.ipa
+          name: ShinnManager-ipa
+          path: |
+            ShinnManager.ipa
+            ShinnManager.ipa.sha256
           if-no-files-found: error
+          retention-days: 14
