@@ -6,40 +6,34 @@ on:
 jobs:
   build:
     runs-on: macos-14
-    timeout-minutes: 50
+    timeout-minutes: 55
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Extract ZIP
         run: |
           set -e
           ZIP=$(find . -maxdepth 1 -name "*.zip" | head -1)
-          echo "ZIP = $ZIP"
-          if [ -z "$ZIP" ]; then
-            echo "Khong tim thay file zip"
-            ls -la
-            exit 1
-          fi
+          echo "ZIP=$ZIP"
+          [ -n "$ZIP" ] || { ls -la; exit 1; }
           mkdir -p src
           unzip -o "$ZIP" -d src
-          PROJECT=$(find src -name "pubspec.yaml" | head -1 | xargs dirname)
-          echo "PROJECT = $PROJECT"
+          PROJECT=$(find src -name pubspec.yaml | head -1 | xargs dirname)
+          echo "PROJECT=$PROJECT"
           cp -a "$PROJECT"/. .
-          ls -la
           test -f pubspec.yaml
+          test -f lib/main.dart
+          ls -la
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      - name: Flutter version
-        run: flutter --version
+      - run: flutter --version
 
-      - name: Create iOS project
+      - name: Create iOS
         run: |
           set -e
           rm -rf ios
@@ -50,24 +44,23 @@ jobs:
         run: |
           set -e
           P=ios/Runner/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ShinnManager" "$P" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ShinnManager" "$P"
-          /usr/libexec/PlistBuddy -c "Set :NSFaceIDUsageDescription Xac thuc de mo ShinnManager" "$P" || /usr/libexec/PlistBuddy -c "Add :NSFaceIDUsageDescription string Xac thuc de mo ShinnManager" "$P"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ShinnManager" "$P" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ShinnManager" "$P"
+          /usr/libexec/PlistBuddy -c "Set :NSFaceIDUsageDescription Xac thuc de mo ShinnManager" "$P" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :NSFaceIDUsageDescription string Xac thuc de mo ShinnManager" "$P"
           sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*/IPHONEOS_DEPLOYMENT_TARGET = 17.0/g' ios/Runner.xcodeproj/project.pbxproj
 
-      - name: Pub get
-        run: flutter pub get
+      - run: flutter pub get
 
-      - name: Disable signing
+      - name: Fix Podfile + disable signing
         run: |
           set -e
-          # Patch pbxproj
-          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' ios/Runner.xcodeproj/project.pbxproj
-          sed -i '' 's/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = "";/g' ios/Runner.xcodeproj/project.pbxproj
-          sed -i '' 's/CODE_SIGN_IDENTITY = ".*";/CODE_SIGN_IDENTITY = "";/g' ios/Runner.xcodeproj/project.pbxproj
 
-          # Patch Podfile
-          cat >> ios/Podfile << 'EOF'
+          # Xóa post_install cũ (nếu có)
+          if grep -q "post_install do" ios/Podfile; then
+            sed -i '' '/post_install do |installer|/,/^end$/d' ios/Podfile
+          fi
 
+          # Thêm post_install mới
+          cat >> ios/Podfile << 'ENDPOD'
           post_install do |installer|
             installer.pods_project.targets.each do |target|
               flutter_additional_ios_build_settings(target)
@@ -79,7 +72,15 @@ jobs:
               end
             end
           end
-          EOF
+          ENDPOD
+
+          # Tắt signing trên project
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' ios/Runner.xcodeproj/project.pbxproj
+          sed -i '' 's/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = "";/g' ios/Runner.xcodeproj/project.pbxproj
+          sed -i '' 's/CODE_SIGN_IDENTITY = ".*";/CODE_SIGN_IDENTITY = "";/g' ios/Runner.xcodeproj/project.pbxproj
+
+          echo "=== Podfile ==="
+          cat ios/Podfile
 
       - name: Pod install
         run: |
@@ -91,26 +92,32 @@ jobs:
         run: |
           set -e
           flutter build ios --release --no-codesign --config-only
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" build
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            build
 
-      - name: Package IPA
+      - name: Make IPA
         run: |
           set -e
           APP=$(find build -name "Runner.app" -type d | head -1)
-          echo "APP = $APP"
-          if [ -z "$APP" ]; then
-            find build -type d -name "*.app" || true
-            exit 1
-          fi
+          echo "APP=$APP"
+          [ -n "$APP" ] || { find build -name "*.app" -type d; exit 1; }
           rm -rf Payload ShinnManager.ipa
-          mkdir -p Payload
+          mkdir Payload
           cp -R "$APP" Payload/ShinnManager.app
           ditto -c -k --sequesterRsrc --keepParent Payload ShinnManager.ipa
           ls -lh ShinnManager.ipa
           shasum -a 256 ShinnManager.ipa
 
-      - name: Upload
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: ShinnManager-ipa
           path: ShinnManager.ipa
