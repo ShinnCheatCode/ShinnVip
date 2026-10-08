@@ -20,30 +20,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 1. Tìm và giải nén zip
       - name: Extract ZIP
         shell: bash
         run: |
           set -euo pipefail
           ZIP=$(find . -maxdepth 1 -name "*.zip" | head -1)
           if [ -z "$ZIP" ]; then
-            echo "❌ Không tìm thấy file .zip ở root repo"
+            echo "Khong tim thay file .zip o root repo"
             ls -la
             exit 1
           fi
-          echo "✅ Found: $ZIP"
+          echo "Found: $ZIP"
           mkdir -p src
           unzip -o "$ZIP" -d src
           PROJECT=$(find src -name "pubspec.yaml" | head -1 | xargs dirname)
-          echo "✅ Project root: $PROJECT"
-          # Copy toàn bộ ra root
+          echo "Project root: $PROJECT"
           shopt -s dotglob nullglob
           cp -a "$PROJECT"/. .
           ls -la
-          test -f pubspec.yaml || { echo "❌ Không có pubspec.yaml"; exit 1; }
-          test -f lib/main.dart || { echo "❌ Không có lib/main.dart"; exit 1; }
+          test -f pubspec.yaml || { echo "Khong co pubspec.yaml"; exit 1; }
+          test -f lib/main.dart || { echo "Khong co lib/main.dart"; exit 1; }
 
-      # 2. Setup Flutter
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -55,10 +52,7 @@ jobs:
           flutter --version
           dart --version
           xcodebuild -version
-          ruby --version
-          pod --version
 
-      # 3. Tạo project iOS sạch
       - name: Generate iOS project
         shell: bash
         run: |
@@ -71,9 +65,8 @@ jobs:
             --ios-language swift \
             /tmp/shinn_tpl
           cp -R /tmp/shinn_tpl/ios ./ios
-          echo "✅ iOS project created"
+          echo "iOS project created"
 
-      # 4. Cấu hình Info.plist + iOS version
       - name: Configure Info.plist
         shell: bash
         run: |
@@ -81,35 +74,30 @@ jobs:
           P="ios/Runner/Info.plist"
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ShinnManager" "$P" 2>/dev/null || \
             /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ShinnManager" "$P"
-          /usr/libexec/PlistBuddy -c "Set :NSFaceIDUsageDescription Xác thực để mở ShinnManager" "$P" 2>/dev/null || \
-            /usr/libexec/PlistBuddy -c "Add :NSFaceIDUsageDescription string Xác thực để mở ShinnManager" "$P"
+          /usr/libexec/PlistBuddy -c "Set :NSFaceIDUsageDescription Xac thuc de mo ShinnManager" "$P" 2>/dev/null || \
+            /usr/libexec/PlistBuddy -c "Add :NSFaceIDUsageDescription string Xac thuc de mo ShinnManager" "$P"
           sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*/IPHONEOS_DEPLOYMENT_TARGET = 17.0/g' ios/Runner.xcodeproj/project.pbxproj
-          echo "✅ Info.plist configured"
+          echo "Info.plist configured"
 
-      # 5. flutter pub get (rất quan trọng — phải trước khi sửa Podfile)
       - name: Flutter pub get
         run: flutter pub get
 
-      # 6. Tắt code signing triệt để (project + Podfile)
       - name: Disable code signing
         shell: bash
         run: |
           set -euo pipefail
 
-          # --- Patch project.pbxproj ---
           python3 << 'PY'
           import re
           path = "ios/Runner.xcodeproj/project.pbxproj"
           with open(path) as f:
               c = f.read()
 
-          # Đổi style + identity
           c = c.replace("CODE_SIGN_STYLE = Automatic;", "CODE_SIGN_STYLE = Manual;")
           c = re.sub(r'DEVELOPMENT_TEAM = [^;]*;', 'DEVELOPMENT_TEAM = "";', c)
           c = re.sub(r'CODE_SIGN_IDENTITY = "[^"]*";', 'CODE_SIGN_IDENTITY = "";', c)
           c = re.sub(r'"CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]" = "[^"]*";', '"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";', c)
 
-          # Chèn flag vào mọi buildSettings
           flags = '''
   				CODE_SIGNING_ALLOWED = NO;
   				CODE_SIGNING_REQUIRED = NO;
@@ -120,11 +108,11 @@ jobs:
 
           with open(path, "w") as f:
               f.write(c)
-          print("✅ project.pbxproj patched")
+          print("project.pbxproj patched")
           PY
 
-          # --- Patch Podfile (thay thế post_install nếu đã có, hoặc thêm mới) ---
           python3 << 'PY'
+          import re
           path = "ios/Podfile"
           with open(path) as f:
               content = f.read()
@@ -144,9 +132,7 @@ jobs:
   end
   '''
 
-          import re
           if re.search(r'post_install\s+do\s+\|installer\|', content):
-              # Thay thế block post_install cũ
               content = re.sub(
                   r'post_install\s+do\s+\|installer\|.*?^end',
                   post_install_block.strip(),
@@ -158,32 +144,26 @@ jobs:
 
           with open(path, "w") as f:
               f.write(content)
-          print("✅ Podfile patched")
+          print("Podfile patched")
           PY
 
-          echo "✅ Code signing disabled"
+          echo "Code signing disabled"
 
-      # 7. Pod install (sau khi đã có dependencies từ pub get)
       - name: Pod install
         run: |
           cd ios
           pod install
           cd ..
 
-      # 8. Analyze (không bắt buộc fail)
       - name: Analyze
         run: flutter analyze --no-fatal-infos --no-fatal-warnings || true
 
-      # 9. Build bằng xcodebuild (ổn định nhất)
       - name: Build iOS unsigned
         shell: bash
         run: |
           set -euo pipefail
-
-          # Tạo file config Flutter
           flutter build ios --release --no-codesign --config-only
 
-          # Build thật bằng xcodebuild, tắt signing hoàn toàn
           xcodebuild \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
@@ -197,21 +177,20 @@ jobs:
             ONLY_ACTIVE_ARCH=NO \
             build
 
-          echo "✅ Xcode build finished"
+          echo "Xcode build finished"
 
-      # 10. Đóng gói IPA
       - name: Package IPA
         shell: bash
         run: |
           set -euo pipefail
           APP=$(find build -name "Runner.app" -type d | head -1)
           if [ -z "$APP" ]; then
-            echo "❌ Không tìm thấy Runner.app"
+            echo "Khong tim thay Runner.app"
             find build -type d -name "*.app" || true
             find build -type d | head -30
             exit 1
           fi
-          echo "✅ Found: $APP"
+          echo "Found: $APP"
           rm -rf Payload ShinnManager.ipa
           mkdir -p Payload
           cp -R "$APP" Payload/ShinnManager.app
@@ -220,7 +199,6 @@ jobs:
           ls -lh ShinnManager.ipa
           file ShinnManager.ipa
 
-      # 11. Upload artifact
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
