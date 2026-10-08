@@ -1,18 +1,10 @@
-name: Build IPA from ZIP
+name: Build IPA
 
 on:
   workflow_dispatch:
 
-permissions:
-  contents: read
-
-concurrency:
-  group: shinnmanager-ipa
-  cancel-in-progress: true
-
 jobs:
   build:
-    name: Build unsigned IPA
     runs-on: macos-14
     timeout-minutes: 50
 
@@ -21,25 +13,22 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Extract ZIP
-        shell: bash
         run: |
-          set -euo pipefail
+          set -e
           ZIP=$(find . -maxdepth 1 -name "*.zip" | head -1)
+          echo "ZIP = $ZIP"
           if [ -z "$ZIP" ]; then
-            echo "Khong tim thay file .zip o root repo"
+            echo "Khong tim thay file zip"
             ls -la
             exit 1
           fi
-          echo "Found: $ZIP"
           mkdir -p src
           unzip -o "$ZIP" -d src
           PROJECT=$(find src -name "pubspec.yaml" | head -1 | xargs dirname)
-          echo "Project root: $PROJECT"
-          shopt -s dotglob nullglob
+          echo "PROJECT = $PROJECT"
           cp -a "$PROJECT"/. .
           ls -la
-          test -f pubspec.yaml || { echo "Khong co pubspec.yaml"; exit 1; }
-          test -f lib/main.dart || { echo "Khong co lib/main.dart"; exit 1; }
+          test -f pubspec.yaml
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -47,107 +36,50 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Environment
-        run: |
-          flutter --version
-          dart --version
-          xcodebuild -version
+      - name: Flutter version
+        run: flutter --version
 
-      - name: Generate iOS project
-        shell: bash
+      - name: Create iOS project
         run: |
-          set -euo pipefail
-          rm -rf ios /tmp/shinn_tpl
-          flutter create \
-            --platforms=ios \
-            --org com.shinn \
-            --project-name shinn_manager \
-            --ios-language swift \
-            /tmp/shinn_tpl
-          cp -R /tmp/shinn_tpl/ios ./ios
-          echo "iOS project created"
+          set -e
+          rm -rf ios
+          flutter create --platforms=ios --org com.shinn --project-name shinn_manager --ios-language swift /tmp/tpl
+          cp -R /tmp/tpl/ios ./ios
 
-      - name: Configure Info.plist
-        shell: bash
+      - name: Configure
         run: |
-          set -euo pipefail
-          P="ios/Runner/Info.plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ShinnManager" "$P" 2>/dev/null || \
-            /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ShinnManager" "$P"
-          /usr/libexec/PlistBuddy -c "Set :NSFaceIDUsageDescription Xac thuc de mo ShinnManager" "$P" 2>/dev/null || \
-            /usr/libexec/PlistBuddy -c "Add :NSFaceIDUsageDescription string Xac thuc de mo ShinnManager" "$P"
+          set -e
+          P=ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ShinnManager" "$P" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ShinnManager" "$P"
+          /usr/libexec/PlistBuddy -c "Set :NSFaceIDUsageDescription Xac thuc de mo ShinnManager" "$P" || /usr/libexec/PlistBuddy -c "Add :NSFaceIDUsageDescription string Xac thuc de mo ShinnManager" "$P"
           sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*/IPHONEOS_DEPLOYMENT_TARGET = 17.0/g' ios/Runner.xcodeproj/project.pbxproj
-          echo "Info.plist configured"
 
-      - name: Flutter pub get
+      - name: Pub get
         run: flutter pub get
 
-      - name: Disable code signing
-        shell: bash
+      - name: Disable signing
         run: |
-          set -euo pipefail
+          set -e
+          # Patch pbxproj
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' ios/Runner.xcodeproj/project.pbxproj
+          sed -i '' 's/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = "";/g' ios/Runner.xcodeproj/project.pbxproj
+          sed -i '' 's/CODE_SIGN_IDENTITY = ".*";/CODE_SIGN_IDENTITY = "";/g' ios/Runner.xcodeproj/project.pbxproj
 
-          python3 << 'PY'
-          import re
-          path = "ios/Runner.xcodeproj/project.pbxproj"
-          with open(path) as f:
-              c = f.read()
+          # Patch Podfile
+          cat >> ios/Podfile << 'EOF'
 
-          c = c.replace("CODE_SIGN_STYLE = Automatic;", "CODE_SIGN_STYLE = Manual;")
-          c = re.sub(r'DEVELOPMENT_TEAM = [^;]*;', 'DEVELOPMENT_TEAM = "";', c)
-          c = re.sub(r'CODE_SIGN_IDENTITY = "[^"]*";', 'CODE_SIGN_IDENTITY = "";', c)
-          c = re.sub(r'"CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]" = "[^"]*";', '"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";', c)
-
-          flags = '''
-  				CODE_SIGNING_ALLOWED = NO;
-  				CODE_SIGNING_REQUIRED = NO;
-  				CODE_SIGN_IDENTITY = "";
-  				DEVELOPMENT_TEAM = "";
-  '''
-          c = re.sub(r'(buildSettings = \{)', r'\1' + flags, c)
-
-          with open(path, "w") as f:
-              f.write(c)
-          print("project.pbxproj patched")
-          PY
-
-          python3 << 'PY'
-          import re
-          path = "ios/Podfile"
-          with open(path) as f:
-              content = f.read()
-
-          post_install_block = '''
-  post_install do |installer|
-    installer.pods_project.targets.each do |target|
-      flutter_additional_ios_build_settings(target)
-      target.build_configurations.each do |config|
-        config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
-        config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
-        config.build_settings['CODE_SIGN_IDENTITY'] = ''
-        config.build_settings['EXPANDED_CODE_SIGN_IDENTITY'] = ''
-        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '17.0'
-      end
-    end
-  end
-  '''
-
-          if re.search(r'post_install\s+do\s+\|installer\|', content):
-              content = re.sub(
-                  r'post_install\s+do\s+\|installer\|.*?^end',
-                  post_install_block.strip(),
-                  content,
-                  flags=re.DOTALL | re.MULTILINE
-              )
-          else:
-              content += "\n" + post_install_block
-
-          with open(path, "w") as f:
-              f.write(content)
-          print("Podfile patched")
-          PY
-
-          echo "Code signing disabled"
+          post_install do |installer|
+            installer.pods_project.targets.each do |target|
+              flutter_additional_ios_build_settings(target)
+              target.build_configurations.each do |config|
+                config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+                config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
+                config.build_settings['CODE_SIGN_IDENTITY'] = ''
+                config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '17.0'
+              end
+            end
+          end
+          EOF
 
       - name: Pod install
         run: |
@@ -155,56 +87,31 @@ jobs:
           pod install
           cd ..
 
-      - name: Analyze
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings || true
-
-      - name: Build iOS unsigned
-        shell: bash
+      - name: Build
         run: |
-          set -euo pipefail
+          set -e
           flutter build ios --release --no-codesign --config-only
-
-          xcodebuild \
-            -workspace ios/Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            DEVELOPMENT_TEAM="" \
-            ONLY_ACTIVE_ARCH=NO \
-            build
-
-          echo "Xcode build finished"
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" build
 
       - name: Package IPA
-        shell: bash
         run: |
-          set -euo pipefail
+          set -e
           APP=$(find build -name "Runner.app" -type d | head -1)
+          echo "APP = $APP"
           if [ -z "$APP" ]; then
-            echo "Khong tim thay Runner.app"
             find build -type d -name "*.app" || true
-            find build -type d | head -30
             exit 1
           fi
-          echo "Found: $APP"
           rm -rf Payload ShinnManager.ipa
           mkdir -p Payload
           cp -R "$APP" Payload/ShinnManager.app
-          /usr/bin/ditto -c -k --sequesterRsrc --keepParent Payload ShinnManager.ipa
-          shasum -a 256 ShinnManager.ipa | tee ShinnManager.ipa.sha256
+          ditto -c -k --sequesterRsrc --keepParent Payload ShinnManager.ipa
           ls -lh ShinnManager.ipa
-          file ShinnManager.ipa
+          shasum -a 256 ShinnManager.ipa
 
-      - name: Upload IPA
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: ShinnManager-ipa
-          path: |
-            ShinnManager.ipa
-            ShinnManager.ipa.sha256
-          if-no-files-found: error
+          path: ShinnManager.ipa
           retention-days: 14
