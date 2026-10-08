@@ -1,10 +1,11 @@
-name: Build ShinnCheat IPA
+name: Build ShinnManager IPA
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-  workflow_dispatch:
+      - master
 
 permissions:
   contents: read
@@ -14,221 +15,101 @@ jobs:
     runs-on: macos-14
 
     steps:
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Show environment
-        run: |
-          xcodebuild -version
-          swift --version
-          echo "Workspace:"
-          pwd
-          find . -maxdepth 3 -type f | sort | head -200
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
 
-      - name: Check Source.zip
+      - name: Check Flutter
         run: |
-          if [ ! -f "Source.zip" ]; then
-            echo "::error::Source.zip not found in repository root."
+          flutter --version
+          dart --version
+
+      - name: Check project
+        run: |
+          if [ ! -f "pubspec.yaml" ]; then
+            echo "ERROR: pubspec.yaml not found."
+            echo "Current directory:"
+            pwd
+            echo "Files:"
+            find . -maxdepth 3 -type f | sort | head -200
             exit 1
           fi
 
-          echo "Source.zip found:"
-          ls -lh Source.zip
+          echo "Flutter project found."
 
-      - name: Extract Source.zip
+      - name: Prepare Flutter project
         run: |
-          rm -rf build_source
-          mkdir -p build_source
+          if [ ! -d "ios" ]; then
+            echo "ios folder not found."
+            echo "Creating iOS platform..."
 
-          unzip -q Source.zip -d build_source
+            flutter create \
+              --platforms=ios \
+              --project-name=shinn_manager \
+              --org=com.shinn.shinnmanager \
+              .
 
-          echo "Extracted files:"
-          find build_source -maxdepth 5 -type f | sort | head -300
-
-      - name: Locate Xcode project
-        id: locate
-        shell: bash
-        run: |
-          PROJECT=$(find "$GITHUB_WORKSPACE/build_source" \
-            -name "*.xcodeproj" \
-            -type d \
-            -print -quit)
-
-          if [ -z "$PROJECT" ]; then
-            echo "::error::No .xcodeproj found inside Source.zip"
-            exit 1
-          fi
-
-          PROJECT_DIR="$(dirname "$PROJECT")"
-          PROJECT_NAME="$(basename "$PROJECT")"
-
-          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
-          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-          echo "project_name=$PROJECT_NAME" >> "$GITHUB_OUTPUT"
-
-          echo "Project:"
-          echo "$PROJECT"
-
-      - name: Locate ShinnCompleteUI.swift
-        run: |
-          FILE=$(find "$GITHUB_WORKSPACE/build_source" \
-            -name "ShinnCompleteUI.swift" \
-            -type f \
-            -print -quit)
-
-          if [ -z "$FILE" ]; then
-            echo "::warning::ShinnCompleteUI.swift was not found."
           else
-            echo "Found:"
-            echo "$FILE"
+            echo "ios folder already exists."
           fi
 
-      - name: Show Xcode schemes
-        id: schemes
-        shell: bash
+      - name: Get dependencies
         run: |
-          PROJECT="${{ steps.locate.outputs.project }}"
+          flutter clean
+          flutter pub get
 
-          echo "Available schemes:"
-          xcodebuild \
-            -project "$PROJECT" \
-            -list
-
-      - name: Detect scheme
-        id: scheme
-        shell: bash
+      - name: Analyze
         run: |
-          PROJECT="${{ steps.locate.outputs.project }}"
+          flutter analyze
 
-          SCHEME=$(
-            xcodebuild -project "$PROJECT" -list |
-            awk '
-              /Schemes:/ { found=1; next }
-              found && NF {
-                gsub(/^[ \t]+|[ \t]+$/, "", $0)
-                print
-                exit
-              }
-            '
-          )
-
-          if [ -z "$SCHEME" ]; then
-            echo "::error::No Xcode scheme found."
-            exit 1
-          fi
-
-          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
-          echo "Using scheme: $SCHEME"
-
-      - name: Clean
+      - name: Install CocoaPods
         run: |
-          PROJECT="${{ steps.locate.outputs.project }}"
-          SCHEME="${{ steps.scheme.outputs.scheme }}"
+          cd ios
+          pod install --repo-update
+          cd ..
 
-          xcodebuild \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
-            -configuration Release \
-            clean
-
-      - name: Build archive
-        id: archive
-        shell: bash
+      - name: Build iOS
         run: |
-          set -o pipefail
-
-          PROJECT="${{ steps.locate.outputs.project }}"
-          SCHEME="${{ steps.scheme.outputs.scheme }}"
-
-          rm -rf "$GITHUB_WORKSPACE/build"
-          mkdir -p "$GITHUB_WORKSPACE/build"
-
-          xcodebuild \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination "generic/platform=iOS" \
-            -archivePath "$GITHUB_WORKSPACE/build/ShinnCheat.xcarchive" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            archive \
-            2>&1 | tee "$GITHUB_WORKSPACE/build/build.log"
-
-      - name: Find built app
-        id: app
-        shell: bash
-        run: |
-          APP=$(find \
-            "$GITHUB_WORKSPACE/build/ShinnCheat.xcarchive/Products/Applications" \
-            -maxdepth 1 \
-            -name "*.app" \
-            -type d \
-            -print -quit)
-
-          if [ -z "$APP" ]; then
-            echo "::error::No .app found in archive."
-            echo "Archive contents:"
-            find "$GITHUB_WORKSPACE/build/ShinnCheat.xcarchive" -maxdepth 5 -print
-            exit 1
-          fi
-
-          echo "app=$APP" >> "$GITHUB_OUTPUT"
-          echo "Built app:"
-          echo "$APP"
+          flutter build ios \
+            --release \
+            --no-codesign
 
       - name: Create IPA
-        shell: bash
         run: |
-          set -e
+          rm -rf build/ipa
+          mkdir -p build/ipa/Payload
 
-          APP="${{ steps.app.outputs.app }}"
+          cp -R \
+            build/ios/iphoneos/Runner.app \
+            build/ipa/Payload/Runner.app
 
-          rm -rf "$GITHUB_WORKSPACE/build/Payload"
-          mkdir -p "$GITHUB_WORKSPACE/build/Payload"
+          cd build/ipa
+          zip -r ../ShinnManager.ipa Payload
 
-          cp -R "$APP" "$GITHUB_WORKSPACE/build/Payload/"
-
-          cd "$GITHUB_WORKSPACE/build"
-
-          zip -qry ShinnCheat.ipa Payload
+          cd ../..
 
           echo "IPA created:"
-          ls -lh ShinnCheat.ipa
+          ls -lh build/ShinnManager.ipa
+
+      - name: SHA256
+        run: |
+          shasum -a 256 \
+            build/ShinnManager.ipa \
+            > build/ShinnManager.ipa.sha256
+
+          cat build/ShinnManager.ipa.sha256
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: ShinnCheat-IPA
-          path: build/ShinnCheat.ipa
+          name: ShinnManager-IPA
+          path: |
+            build/ShinnManager.ipa
+            build/ShinnManager.ipa.sha256
           if-no-files-found: error
-          retention-days: 7
-
-      - name: Upload archive
-        uses: actions/upload-artifact@v4
-        with:
-          name: ShinnCheat-XCArchive
-          path: build/ShinnCheat.xcarchive
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ShinnCheat-Build-Log
-          path: build/build.log
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Build summary
-        if: always()
-        run: |
-          echo "## ShinnCheat Build" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Runner: macOS 14" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Project: ${{ steps.locate.outputs.project_name }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Scheme: ${{ steps.scheme.outputs.scheme }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Archive: build/ShinnCheat.xcarchive" >> "$GITHUB_STEP_SUMMARY"
-          echo "- IPA: build/ShinnCheat.ipa" >> "$GITHUB_STEP_SUMMARY"
+          retention-days: 30
