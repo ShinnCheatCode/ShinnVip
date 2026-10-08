@@ -10,7 +10,7 @@ jobs:
   build:
     name: Build unsigned IPA from ZIP
     runs-on: macos-14
-    timeout-minutes: 40
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -20,21 +20,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "Looking for zip file..."
           ZIP=$(find . -maxdepth 1 -name "*.zip" | head -1)
           if [ -z "$ZIP" ]; then
-            echo "❌ Không tìm thấy file .zip trong root repo"
+            echo "❌ Không tìm thấy file .zip"
             exit 1
           fi
           echo "Found: $ZIP"
           mkdir -p src
           unzip -o "$ZIP" -d src
-          # Tìm thư mục chứa pubspec.yaml
           PROJECT=$(find src -name "pubspec.yaml" | head -1 | xargs dirname)
           echo "Project root: $PROJECT"
-          # Đưa toàn bộ file ra root làm việc
+          # Copy ra root
+          shopt -s dotglob
           cp -R "$PROJECT"/* .
-          cp -R "$PROJECT"/.github . 2>/dev/null || true
           ls -la
           test -f pubspec.yaml || { echo "❌ Không tìm thấy pubspec.yaml"; exit 1; }
 
@@ -64,16 +62,51 @@ jobs:
           rm -rf ios
           cp -R /tmp/shinn_flutter_template/ios ios
 
-      - name: Configure iOS
+      - name: Configure iOS (disable code signing completely)
         shell: bash
         run: |
           set -euo pipefail
           P="ios/Runner/Info.plist"
+
+          # Display name
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ShinnManager" "$P" 2>/dev/null || \
             /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ShinnManager" "$P"
+
+          # Face ID
           /usr/libexec/PlistBuddy -c "Set :NSFaceIDUsageDescription Xác thực để mở ShinnManager" "$P" 2>/dev/null || \
             /usr/libexec/PlistBuddy -c "Add :NSFaceIDUsageDescription string Xác thực để mở ShinnManager" "$P"
+
+          # Minimum iOS
           sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*/IPHONEOS_DEPLOYMENT_TARGET = 17.0/g' ios/Runner.xcodeproj/project.pbxproj
+
+          # === Tắt code signing hoàn toàn ===
+          # Sửa project.pbxproj
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' ios/Runner.xcodeproj/project.pbxproj
+          sed -i '' 's/CODE_SIGNING_ALLOWED = YES;/CODE_SIGNING_ALLOWED = NO;/g' ios/Runner.xcodeproj/project.pbxproj
+          sed -i '' 's/CODE_SIGNING_REQUIRED = YES;/CODE_SIGNING_REQUIRED = NO;/g' ios/Runner.xcodeproj/project.pbxproj
+
+          # Thêm flag nếu chưa có
+          if ! grep -q "CODE_SIGNING_ALLOWED" ios/Runner.xcodeproj/project.pbxproj; then
+            sed -i '' 's/buildSettings = {/buildSettings = {\n\t\t\t\tCODE_SIGNING_ALLOWED = NO;\n\t\t\t\tCODE_SIGNING_REQUIRED = NO;/g' ios/Runner.xcodeproj/project.pbxproj
+          fi
+
+          # Sửa ExportOptions nếu cần
+          cat > ios/ExportOptions.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>development</string>
+            <key>compileBitcode</key>
+            <false/>
+            <key>signingStyle</key>
+            <string>manual</string>
+          </dict>
+          </plist>
+          EOF
+
+          echo "Code signing disabled"
 
       - name: Install dependencies
         run: flutter pub get
@@ -82,18 +115,28 @@ jobs:
         run: flutter analyze --no-fatal-infos --no-fatal-warnings || true
 
       - name: Build iOS release (unsigned)
-        run: flutter build ios --release --no-codesign
+        run: |
+          flutter build ios --release --no-codesign \
+            --dart-define=FLUTTER_WEB_USE_SKIA=false
 
       - name: Package unsigned IPA
         shell: bash
         run: |
           set -euo pipefail
+          APP_PATH=$(find build/ios -name "Runner.app" -type d | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "❌ Không tìm thấy Runner.app"
+            find build -type d -name "*.app" || true
+            exit 1
+          fi
+          echo "Found app: $APP_PATH"
           rm -rf Payload ShinnManager.ipa
           mkdir -p Payload
-          cp -R build/ios/iphoneos/Runner.app Payload/ShinnManager.app
+          cp -R "$APP_PATH" Payload/ShinnManager.app
           /usr/bin/ditto -c -k --sequesterRsrc --keepParent Payload ShinnManager.ipa
           shasum -a 256 ShinnManager.ipa | tee ShinnManager.ipa.sha256
           ls -lh ShinnManager.ipa
+          file ShinnManager.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
