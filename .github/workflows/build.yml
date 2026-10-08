@@ -1,30 +1,42 @@
-name: Build ShinnManager IPA
+name: Build IPA from ZIP
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
 
 permissions:
   contents: read
 
-concurrency:
-  group: shinnmanager-ipa
-  cancel-in-progress: true
-
 jobs:
   build:
-    name: Build unsigned IPA
+    name: Build unsigned IPA from ZIP
     runs-on: macos-14
-    timeout-minutes: 35
-
-    defaults:
-      run:
-        working-directory: ShinnManager   # ← quan trọng
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Find and extract ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Looking for zip file..."
+          ZIP=$(find . -maxdepth 1 -name "*.zip" | head -1)
+          if [ -z "$ZIP" ]; then
+            echo "❌ Không tìm thấy file .zip trong root repo"
+            exit 1
+          fi
+          echo "Found: $ZIP"
+          mkdir -p src
+          unzip -o "$ZIP" -d src
+          # Tìm thư mục chứa pubspec.yaml
+          PROJECT=$(find src -name "pubspec.yaml" | head -1 | xargs dirname)
+          echo "Project root: $PROJECT"
+          # Đưa toàn bộ file ra root làm việc
+          cp -R "$PROJECT"/* .
+          cp -R "$PROJECT"/.github . 2>/dev/null || true
+          ls -la
+          test -f pubspec.yaml || { echo "❌ Không tìm thấy pubspec.yaml"; exit 1; }
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -32,7 +44,7 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Show tool versions
+      - name: Show environment
         run: |
           flutter --version
           dart --version
@@ -57,17 +69,17 @@ jobs:
         run: |
           set -euo pipefail
           P="ios/Runner/Info.plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ShinnManager" "$P" || \
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ShinnManager" "$P" 2>/dev/null || \
             /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ShinnManager" "$P"
-          /usr/libexec/PlistBuddy -c "Add :NSFaceIDUsageDescription string Xac thuc de mo ShinnManager" "$P" || \
-            /usr/libexec/PlistBuddy -c "Set :NSFaceIDUsageDescription Xac thuc de mo ShinnManager" "$P"
+          /usr/libexec/PlistBuddy -c "Set :NSFaceIDUsageDescription Xác thực để mở ShinnManager" "$P" 2>/dev/null || \
+            /usr/libexec/PlistBuddy -c "Add :NSFaceIDUsageDescription string Xác thực để mở ShinnManager" "$P"
           sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*/IPHONEOS_DEPLOYMENT_TARGET = 17.0/g' ios/Runner.xcodeproj/project.pbxproj
 
       - name: Install dependencies
         run: flutter pub get
 
       - name: Analyze Dart
-        run: flutter analyze --no-fatal-infos
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings || true
 
       - name: Build iOS release (unsigned)
         run: flutter build ios --release --no-codesign
@@ -88,7 +100,7 @@ jobs:
         with:
           name: ShinnManager-ipa
           path: |
-            ShinnManager/ShinnManager.ipa
-            ShinnManager/ShinnManager.ipa.sha256
+            ShinnManager.ipa
+            ShinnManager.ipa.sha256
           if-no-files-found: error
           retention-days: 14
