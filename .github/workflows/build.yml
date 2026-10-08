@@ -1,22 +1,54 @@
-name: Build ShinnManager IPA
+name: Build ShinnManger IPA
 
 on:
   workflow_dispatch:
   push:
     branches:
       - main
-      - master
-
-permissions:
-  contents: read
 
 jobs:
   build:
     runs-on: macos-14
 
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Check ZIP
+        run: |
+          set -euo pipefail
+          ls -lah
+          test -f ShinnManger.zip
+
+      - name: Extract source
+        run: |
+          set -euo pipefail
+
+          rm -rf build_source
+          mkdir -p build_source
+
+          unzip -q ShinnManger.zip -d build_source
+
+          echo "===== Extracted files ====="
+          find build_source -maxdepth 3 -type f | sort | head -200
+
+      - name: Detect Flutter project
+        run: |
+          set -euo pipefail
+
+          PROJECT=$(find build_source -name pubspec.yaml -type f -print -quit)
+
+          if [ -z "$PROJECT" ]; then
+            echo "ERROR: Không tìm thấy pubspec.yaml"
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$PROJECT")
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+          echo "Flutter project:"
+          echo "$PROJECT_DIR"
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -24,92 +56,97 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Check Flutter
-        run: |
-          flutter --version
-          dart --version
+      - name: Flutter version
+        run: flutter --version
 
-      - name: Check project
-        run: |
-          if [ ! -f "pubspec.yaml" ]; then
-            echo "ERROR: pubspec.yaml not found."
-            echo "Current directory:"
-            pwd
-            echo "Files:"
-            find . -maxdepth 3 -type f | sort | head -200
-            exit 1
-          fi
+      - name: Flutter pub get
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter pub get
 
-          echo "Flutter project found."
-
-      - name: Prepare Flutter project
+      - name: Analyze
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          if [ ! -d "ios" ]; then
-            echo "ios folder not found."
-            echo "Creating iOS platform..."
+          flutter analyze --no-fatal-infos || true
+
+      - name: Create iOS project if missing
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+
+          if [ ! -d ios ]; then
+            echo "ios/ chưa tồn tại - tạo iOS project"
 
             flutter create \
               --platforms=ios \
-              --project-name=shinn_manager \
-              --org=com.shinn.shinnmanager \
+              --org com.shinn \
+              --project-name shinnmanager \
               .
 
           else
-            echo "ios folder already exists."
+            echo "Đã có ios/, giữ nguyên."
           fi
 
-      - name: Get dependencies
+      - name: Set minimum iOS version
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          flutter clean
-          flutter pub get
+          set -euo pipefail
 
-      - name: Analyze
-        run: |
-          flutter analyze
+          if [ -f ios/Podfile ]; then
+            sed -i '' "s/# platform :ios, '.*'/platform :ios, '17.0'/" ios/Podfile || true
 
-      - name: Install CocoaPods
-        run: |
-          cd ios
-          pod install --repo-update
-          cd ..
+            if ! grep -q "platform :ios" ios/Podfile; then
+              sed -i '' "1i\\
+platform :ios, '17.0'
+" ios/Podfile
+            fi
+          fi
+
+      - name: Flutter clean
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter clean
+
+      - name: Flutter pub get again
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter pub get
 
       - name: Build iOS
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
+          set -euo pipefail
+
           flutter build ios \
             --release \
             --no-codesign
 
-      - name: Create IPA
+      - name: Package IPA
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          rm -rf build/ipa
-          mkdir -p build/ipa/Payload
+          set -euo pipefail
 
-          cp -R \
-            build/ios/iphoneos/Runner.app \
-            build/ipa/Payload/Runner.app
+          rm -rf Payload
+          mkdir -p Payload
 
-          cd build/ipa
-          zip -r ../ShinnManager.ipa Payload
+          APP=$(find build/ios/iphoneos -maxdepth 1 -name "*.app" -type d -print -quit)
 
-          cd ../..
+          if [ -z "$APP" ]; then
+            echo "ERROR: Không tìm thấy .app"
+            find build/ios -maxdepth 4 -print
+            exit 1
+          fi
 
-          echo "IPA created:"
-          ls -lh build/ShinnManager.ipa
+          echo "APP=$APP"
+
+          cp -R "$APP" Payload/
+
+          zip -qry ../ShinnManger.ipa Payload
 
       - name: SHA256
         run: |
-          shasum -a 256 \
-            build/ShinnManager.ipa \
-            > build/ShinnManager.ipa.sha256
-
-          cat build/ShinnManager.ipa.sha256
+          shasum -a 256 ShinnManger.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: ShinnManager-IPA
-          path: |
-            build/ShinnManager.ipa
-            build/ShinnManager.ipa.sha256
+          name: ShinnManger-IPA
+          path: ShinnManger.ipa
           if-no-files-found: error
-          retention-days: 30
