@@ -1,87 +1,66 @@
-
-name: Build IPA from Source.zip
+name: Build IPA
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main, master ]
 
 jobs:
   build:
-    runs-on: macos-15
-
+    runs-on: macos-14
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check Source.zip
+      - name: Unzip Source
         run: |
-          test -f Source.zip || {
-            echo "ERROR: Khong tim thay Source.zip"
-            exit 1
-          }
+          unzip -q Source.zip
+          ls -la Source/
+          ls Source/ThreeOneOSFive.xcodeproj/
 
-      - name: Extract ZIP
+      - name: Select Xcode
         run: |
-          mkdir -p "$RUNNER_TEMP/source"
-          ditto -x -k Source.zip "$RUNNER_TEMP/source"
+          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
 
-      - name: Find Xcode project
-        id: project
-        shell: bash
+      - name: List schemes
         run: |
-          PROJECT=$(find "$RUNNER_TEMP/source" \
-            -name '*.xcodeproj' -print -quit)
+          cd Source
+          xcodebuild -list -project ThreeOneOSFive.xcodeproj || true
 
-          if [ -z "$PROJECT" ]; then
-            echo "Khong tim thay xcodeproj trong Source.zip"
-            find "$RUNNER_TEMP/source" -name '*.xcworkspace'
-            exit 1
-          fi
-
-          echo "path=$PROJECT" >> "$GITHUB_OUTPUT"
-          xcodebuild -list -project "$PROJECT"
-
-      - name: Build IPA
-        env:
-          PROJECT: ${{ steps.project.outputs.path }}
+      - name: Build (Release, unsigned)
         run: |
-          SCHEME=$(xcodebuild -list -json \
-            -project "$PROJECT" |
-            python3 -c '
-import json,sys
-d=json.load(sys.stdin)
-print(d["project"]["schemes"][0])
-')
-
+          cd Source
           xcodebuild \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
+            -project ThreeOneOSFive.xcodeproj \
+            -scheme ThreeOneOSFive \
             -configuration Release \
             -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
-            archive
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
 
       - name: Package IPA
         run: |
-          APP=$(find \
-            "$RUNNER_TEMP/App.xcarchive/Products/Applications" \
-            -maxdepth 1 -name '*.app' -print -quit)
-
-          test -n "$APP" || {
-            echo "Khong tim thay app sau khi build"
+          APP_PATH=$(find Source/build -name "*.app" -type d | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "❌ Không tìm thấy .app"
+            find Source/build -type d 2>/dev/null | head -30 || true
             exit 1
-          }
-
-          mkdir -p "$RUNNER_TEMP/Payload"
-          cp -R "$APP" "$RUNNER_TEMP/Payload/"
-
-          cd "$RUNNER_TEMP"
-          /usr/bin/zip -qry \
-            "$GITHUB_WORKSPACE/KaitoCheat.ipa" Payload
+          fi
+          echo "✅ Found: $APP_PATH"
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -qr KaitoCheat.ipa Payload
+          ls -lh KaitoCheat.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: KaitoCheat-IPA
           path: KaitoCheat.ipa
+          retention-days: 14
