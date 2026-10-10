@@ -1,116 +1,87 @@
-name: Build IPA
+
+name: Build IPA from Source.zip
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: macos-14
-    timeout-minutes: 55
+    runs-on: macos-15
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Source.zip
+        run: |
+          test -f Source.zip || {
+            echo "ERROR: Khong tim thay Source.zip"
+            exit 1
+          }
 
       - name: Extract ZIP
         run: |
-          set -e
-          ZIP=$(find . -maxdepth 1 -name "*.zip" | head -1)
-          echo "ZIP=$ZIP"
-          [ -n "$ZIP" ] || { ls -la; exit 1; }
-          mkdir -p src
-          unzip -o "$ZIP" -d src
-          PROJECT=$(find src -name pubspec.yaml | head -1 | xargs dirname)
-          echo "PROJECT=$PROJECT"
-          cp -a "$PROJECT"/. .
-          test -f pubspec.yaml
-          test -f lib/main.dart
-          ls -la
+          mkdir -p "$RUNNER_TEMP/source"
+          ditto -x -k Source.zip "$RUNNER_TEMP/source"
 
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - run: flutter --version
-
-      - name: Create iOS
+      - name: Find Xcode project
+        id: project
+        shell: bash
         run: |
-          set -e
-          rm -rf ios
-          flutter create --platforms=ios --org com.shinn --project-name shinn_manager --ios-language swift /tmp/tpl
-          cp -R /tmp/tpl/ios ./ios
+          PROJECT=$(find "$RUNNER_TEMP/source" \
+            -name '*.xcodeproj' -print -quit)
 
-      - name: Configure
-        run: |
-          set -e
-          P=ios/Runner/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ShinnManager" "$P" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ShinnManager" "$P"
-          /usr/libexec/PlistBuddy -c "Set :NSFaceIDUsageDescription Xac thuc de mo ShinnManager" "$P" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :NSFaceIDUsageDescription string Xac thuc de mo ShinnManager" "$P"
-          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*/IPHONEOS_DEPLOYMENT_TARGET = 17.0/g' ios/Runner.xcodeproj/project.pbxproj
-
-      - run: flutter pub get
-
-      - name: Fix Podfile + disable signing
-        run: |
-          set -e
-          if grep -q "post_install do" ios/Podfile; then
-            sed -i '' '/post_install do |installer|/,/^end$/d' ios/Podfile
-          fi
-          cat >> ios/Podfile << 'ENDPOD'
-          post_install do |installer|
-            installer.pods_project.targets.each do |target|
-              flutter_additional_ios_build_settings(target)
-              target.build_configurations.each do |config|
-                config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
-                config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
-                config.build_settings['CODE_SIGN_IDENTITY'] = ''
-                config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '17.0'
-              end
-            end
-          end
-          ENDPOD
-          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' ios/Runner.xcodeproj/project.pbxproj
-          sed -i '' 's/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = "";/g' ios/Runner.xcodeproj/project.pbxproj
-          sed -i '' 's/CODE_SIGN_IDENTITY = ".*";/CODE_SIGN_IDENTITY = "";/g' ios/Runner.xcodeproj/project.pbxproj
-
-      - name: Pod install
-        run: |
-          cd ios
-          pod install
-          cd ..
-
-      - name: Build
-        run: |
-          set -e
-          flutter build ios --release --no-codesign
-
-      - name: Make IPA
-        run: |
-          set -e
-          APP="build/ios/iphoneos/Runner.app"
-          if [ ! -d "$APP" ]; then
-            APP=$(find build -name "Runner.app" -type d 2>/dev/null | head -1)
-          fi
-          if [ -z "$APP" ]; then
-            APP=$(find /Users/runner/Library/Developer/Xcode/DerivedData -path "*Release-iphoneos*" -name "Runner.app" -type d 2>/dev/null | head -1)
-          fi
-          echo "APP=$APP"
-          if [ -z "$APP" ] || [ ! -d "$APP" ]; then
-            echo "=== Debug ==="
-            find build -type d -name "*.app" 2>/dev/null || true
-            find /Users/runner/Library/Developer/Xcode/DerivedData -name "Runner.app" -type d 2>/dev/null | head -10 || true
-            ls -la build/ios/ 2>/dev/null || true
+          if [ -z "$PROJECT" ]; then
+            echo "Khong tim thay xcodeproj trong Source.zip"
+            find "$RUNNER_TEMP/source" -name '*.xcworkspace'
             exit 1
           fi
-          rm -rf Payload ShinnManager.ipa
-          mkdir Payload
-          cp -R "$APP" Payload/ShinnManager.app
-          ditto -c -k --sequesterRsrc --keepParent Payload ShinnManager.ipa
-          ls -lh ShinnManager.ipa
-          shasum -a 256 ShinnManager.ipa
 
-      - uses: actions/upload-artifact@v4
+          echo "path=$PROJECT" >> "$GITHUB_OUTPUT"
+          xcodebuild -list -project "$PROJECT"
+
+      - name: Build IPA
+        env:
+          PROJECT: ${{ steps.project.outputs.path }}
+        run: |
+          SCHEME=$(xcodebuild -list -json \
+            -project "$PROJECT" |
+            python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+print(d["project"]["schemes"][0])
+')
+
+          xcodebuild \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            archive
+
+      - name: Package IPA
+        run: |
+          APP=$(find \
+            "$RUNNER_TEMP/App.xcarchive/Products/Applications" \
+            -maxdepth 1 -name '*.app' -print -quit)
+
+          test -n "$APP" || {
+            echo "Khong tim thay app sau khi build"
+            exit 1
+          }
+
+          mkdir -p "$RUNNER_TEMP/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/Payload/"
+
+          cd "$RUNNER_TEMP"
+          /usr/bin/zip -qry \
+            "$GITHUB_WORKSPACE/KaitoCheat.ipa" Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
         with:
-          name: ShinnManager-ipa
-          path: ShinnManager.ipa
-          retention-days: 14
+          name: KaitoCheat-IPA
+          path: KaitoCheat.ipa
