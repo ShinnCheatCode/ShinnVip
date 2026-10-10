@@ -1,153 +1,124 @@
-name: Build IPA
+name: Build from Source.zip
 
 on:
   workflow_dispatch:
+    inputs:
+      configuration:
+        description: "Debug hoặc Release"
+        required: true
+        default: Release
+        type: choice
+        options: [Release, Debug]
   push:
-    branches: [ main, master ]
+    paths:
+      - "Source.zip"
+
+env:
+  ZIP_NAME: Source.zip
+  SCHEME: KaitoCheat
+  APP_NAME: KaitoCheat
+  PROJECT: ThreeOneOSFive.xcodeproj
 
 jobs:
   build:
     runs-on: macos-14
+    timeout-minutes: 45
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Unzip Source
+      - name: Kiểm tra Source.zip
         run: |
-          unzip -q Source.zip
-          ls -la Source/
-          ls -la Source/ThreeOneOSFive.xcodeproj/ || true
+          if [ ! -f "$ZIP_NAME" ]; then
+            echo "::error::Không thấy Source.zip"
+            ls -la
+            exit 1
+          fi
+          ls -lh "$ZIP_NAME"
+
+      - name: Unzip Source.zip
+        run: |
+          set -euo pipefail
+          rm -rf src_build
+          mkdir -p src_build
+          unzip -q "$ZIP_NAME" -d src_build
+
+          if [ -d src_build/Source ]; then
+            echo "SRC_ROOT=src_build/Source" >> "$GITHUB_ENV"
+          elif [ -d src_build/ThreeOneOSFive.xcodeproj ]; then
+            echo "SRC_ROOT=src_build" >> "$GITHUB_ENV"
+          else
+            FOUND=$(find src_build -name "project.pbxproj" | head -1)
+            if [ -z "$FOUND" ]; then
+              echo "::error::Không thấy xcodeproj trong Source.zip"
+              find src_build -maxdepth 3 -type d
+              exit 1
+            fi
+            echo "SRC_ROOT=$(dirname "$(dirname "$FOUND")")" >> "$GITHUB_ENV"
+          fi
 
       - name: Select Xcode
         run: |
-          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer 2>/dev/null \
-            || sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer 2>/dev/null \
-            || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
           xcodebuild -version
 
-      - name: Create scheme (nếu thiếu)
+      - name: Build
+        working-directory: ${{ env.SRC_ROOT }}
+        env:
+          CONFIG: ${{ github.event.inputs.configuration || 'Release' }}
         run: |
-          cd Source
-          mkdir -p ThreeOneOSFive.xcodeproj/xcshareddata/xcschemes
+          set -euo pipefail
+          DERIVED="${GITHUB_WORKSPACE}/derived"
+          mkdir -p "$DERIVED"
 
-          cat > ThreeOneOSFive.xcodeproj/xcshareddata/xcschemes/3105.xcscheme << 'SCHEME'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <Scheme
-             LastUpgradeVersion = "1540"
-             version = "1.7">
-             <BuildAction
-                parallelizeBuildables = "YES"
-                buildImplicitDependencies = "YES">
-                <BuildActionEntries>
-                   <BuildActionEntry
-                      buildForTesting = "YES"
-                      buildForRunning = "YES"
-                      buildForProfiling = "YES"
-                      buildForArchiving = "YES"
-                      buildForAnalyzing = "YES">
-                      <BuildableReference
-                         BuildableIdentifier = "primary"
-                         BlueprintIdentifier = "3105"
-                         BuildableName = "3105.app"
-                         BlueprintName = "3105"
-                         ReferencedContainer = "container:ThreeOneOSFive.xcodeproj">
-                      </BuildableReference>
-                   </BuildActionEntry>
-                </BuildActionEntries>
-             </BuildAction>
-             <TestAction
-                buildConfiguration = "Debug"
-                selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
-                selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
-                shouldUseLaunchSchemeArgsEnv = "YES"
-                shouldAutocreateTestPlan = "YES">
-             </TestAction>
-             <LaunchAction
-                buildConfiguration = "Release"
-                selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
-                selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
-                launchStyle = "0"
-                useCustomWorkingDirectory = "NO"
-                ignoresPersistentStateOnLaunch = "NO"
-                debugDocumentVersioning = "YES"
-                debugServiceExtension = "internal"
-                allowLocationSimulation = "YES">
-                <BuildableProductRunnable
-                   runnableDebuggingMode = "0">
-                   <BuildableReference
-                      BuildableIdentifier = "primary"
-                      BlueprintIdentifier = "3105"
-                      BuildableName = "3105.app"
-                      BlueprintName = "3105"
-                      ReferencedContainer = "container:ThreeOneOSFive.xcodeproj">
-                   </BuildableReference>
-                </BuildableProductRunnable>
-             </LaunchAction>
-             <ProfileAction
-                buildConfiguration = "Release"
-                shouldUseLaunchSchemeArgsEnv = "YES"
-                savedToolIdentifier = ""
-                useCustomWorkingDirectory = "NO"
-                debugDocumentVersioning = "YES">
-                <BuildableProductRunnable
-                   runnableDebuggingMode = "0">
-                   <BuildableReference
-                      BuildableIdentifier = "primary"
-                      BlueprintIdentifier = "3105"
-                      BuildableName = "3105.app"
-                      BlueprintName = "3105"
-                      ReferencedContainer = "container:ThreeOneOSFive.xcodeproj">
-                   </BuildableReference>
-                </BuildableProductRunnable>
-             </ProfileAction>
-             <AnalyzeAction
-                buildConfiguration = "Debug">
-             </AnalyzeAction>
-             <ArchiveAction
-                buildConfiguration = "Release"
-                revealArchiveInOrganizer = "YES">
-             </ArchiveAction>
-          </Scheme>
-          SCHEME
-
-          echo "✅ Scheme 3105 đã tạo"
-          xcodebuild -list -project ThreeOneOSFive.xcodeproj
-
-      - name: Build (Release, unsigned)
-        run: |
-          cd Source
           xcodebuild \
-            -project ThreeOneOSFive.xcodeproj \
-            -scheme 3105 \
-            -configuration Release \
-            -sdk iphoneos \
-            -derivedDataPath build \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIG" \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath "$DERIVED" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
+            ONLY_ACTIVE_ARCH=NO \
             build
 
-      - name: Package IPA
-        run: |
-          APP_PATH=$(find Source/build -name "*.app" -type d | head -1)
+          APP_PATH=$(find "$DERIVED" -name "${APP_NAME}.app" -type d | head -1)
           if [ -z "$APP_PATH" ]; then
-            echo "❌ Không tìm thấy .app"
-            find Source/build -type d 2>/dev/null | head -40 || true
+            APP_PATH=$(find "$DERIVED" -name "3105.app" -type d | head -1)
+          fi
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::Không thấy .app"
+            find "$DERIVED" -name "*.app" -type d || true
             exit 1
           fi
-          echo "✅ Found: $APP_PATH"
-          mkdir -p Payload
-          cp -R "$APP_PATH" Payload/
-          # Đổi tên app thành KaitoCheat.app cho đẹp
-          if [ -d Payload/3105.app ]; then
-            mv Payload/3105.app Payload/KaitoCheat.app
-          fi
-          zip -qr KaitoCheat.ipa Payload
-          ls -lh KaitoCheat.ipa
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          ls -la "$APP_PATH"
+
+      - name: Đóng gói IPA unsigned
+        run: |
+          set -euo pipefail
+          STAGE=$(mktemp -d)
+          mkdir -p "$STAGE/Payload"
+          cp -R "$APP_PATH" "$STAGE/Payload/"
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PATH/Info.plist" 2>/dev/null || echo "0.0.0")
+          BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP_PATH/Info.plist" 2>/dev/null || echo "0")
+          OUT="${GITHUB_WORKSPACE}/${APP_NAME}-${VERSION}-${BUILD}-unsigned.ipa"
+          (cd "$STAGE" && zip -qr "$OUT" Payload)
+          echo "IPA=$OUT" >> "$GITHUB_ENV"
+          ls -lh "$OUT"
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: KaitoCheat-IPA
-          path: KaitoCheat.ipa
+          path: ${{ env.IPA }}
+          retention-days: 14
+
+      - name: Upload .app
+        uses: actions/upload-artifact@v4
+        with:
+          name: KaitoCheat-APP
+          path: ${{ env.APP_PATH }}
           retention-days: 14
